@@ -179,6 +179,7 @@ enum msm_actuator_i2c_operation {
 	MSM_ACT_WRITE = 0,
 	MSM_ACT_POLL,
 	MSM_ACT_CHECK, /*ASUS_BSP ZZ++*/
+	MSM_ACT_READ,//ASUS randy_change
 };
 
 enum actuator_type {

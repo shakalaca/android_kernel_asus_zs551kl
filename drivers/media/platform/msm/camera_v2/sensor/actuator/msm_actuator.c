@@ -666,7 +666,8 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 
 	save_addr_type = a_ctrl->i2c_client.addr_type;
 
-	for (i = (a_ctrl->cam_name == ACTUATOR_MAIN_CAM_2)? size-1 : 0; i < size; i++) { //ASUS_BSP ZZ++
+//	for (i = (a_ctrl->cam_name == ACTUATOR_MAIN_CAM_2)? size-1 : 0; i < size; i++) { //ASUS_BSP ZZ++
+	for (i = 0; i < size; i++) { //ASUS_BSP Randy++
 		switch (settings[i].addr_type) {
 		case MSM_ACTUATOR_BYTE_ADDR:
 			a_ctrl->i2c_client.addr_type = MSM_CAMERA_I2C_BYTE_ADDR;
@@ -738,6 +739,19 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 			*/
 			break;
 		/*ASUS_BSP ZZ++*/
+//ASUS_BSP+++ CR_Randy vcm calibration Randy_Change@asus.com.tw [2017/9/6] Modify Begin
+		case MSM_ACT_READ:
+			rc = a_ctrl->i2c_client.i2c_func_tbl->i2c_read(
+				&a_ctrl->i2c_client,
+				settings[i].reg_addr,
+				&reg_val,
+				settings[i].data_type);
+			settings[i].reg_data=reg_val;
+			break;
+//ASUS_BSP+++ CR_Randy vcm calibration Randy_Change@asus.com.tw [2017/9/6] Modify End
+
+
+
 		default:
 			pr_err("Unsupport i2c_operation: %d\n",
 				settings[i].i2c_operation);
@@ -1735,6 +1749,17 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 			rc = a_ctrl->func_tbl->actuator_init_focus(a_ctrl,
 				set_info->actuator_params.init_setting_size,
 				init_settings);
+//ASUS_BSP+++ CR_Randy vcm calibration Randy_Change@asus.com.tw [2017/9/6] Modify Begin
+			if (init_settings[0].i2c_operation == MSM_ACT_READ) {
+				if (copy_to_user((void *)set_info->actuator_params.init_settings,init_settings,
+								set_info->actuator_params.init_setting_size *
+								sizeof(struct reg_settings_t))) {
+					pr_err("Randy vcm calibration error copy result in actuator_init_focus\n");
+								rc=-EFAULT;
+					}
+			}
+//ASUS_BSP--- CR_Randy vcm calibration Randy_Change@asus.com.tw [2017/9/6] Modify End
+			
 			kfree(init_settings);
 			if (rc < 0) {
 				kfree(a_ctrl->i2c_reg_tbl);
@@ -1801,6 +1826,7 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 	mutex_lock(a_ctrl->actuator_mutex);
 	CDBG("Enter\n");
 	CDBG("%s type %d\n", __func__, cdata->cfgtype);
+
 
 	if (cdata->cfgtype != CFG_ACTUATOR_INIT &&
 		cdata->cfgtype != CFG_ACTUATOR_POWERUP &&

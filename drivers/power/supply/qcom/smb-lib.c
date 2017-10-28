@@ -3895,7 +3895,7 @@ set_current:
 	case ASUS_750K:
 		if (HVDCP_FLAG == 0) {
 			asus_CHG_TYPE = 750;
-			if (!LEGACY_CABLE_FLAG)
+			if (UFP_FLAG == 3 && !LEGACY_CABLE_FLAG)
 				usb_max_current = ICL_2850mA;
 			else
 				usb_max_current = ICL_1900mA;
@@ -4615,7 +4615,7 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 
 	smblib_dbg(chg, PR_INTERRUPT, "IRQ: hvdcp-3p0-auth-done rising; %s detected\n",
 		   apsd_result->name);
-	if (ASUS_ADAPTER_ID == ASUS_200K && asus_CHG_TYPE != 200) {
+	if (ASUS_ADAPTER_ID == ASUS_200K && asus_CHG_TYPE != 200 && apsd_result->pst == POWER_SUPPLY_TYPE_USB_HVDCP_3) {
 		CHG_DBG("%s: Fix HVDCP3 sign from ASUS_200K\n", __func__);
 		asus_CHG_TYPE = 200;
 		rc = smblib_masked_write(smbchg_dev, USBIN_CURRENT_LIMIT_CFG_REG,

@@ -184,6 +184,7 @@ struct ftxxxx_ts_data {
 	bool swipeup_mode_eable;
 	bool gesture_mode_eable;
 	bool irq_wakeup_eable;
+	int touchs;
 	u8 gesture_mode_type;
 	bool reset_pin_status;
 	bool irq_lock_status;

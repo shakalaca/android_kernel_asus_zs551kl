@@ -798,7 +798,7 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 	struct ts_event *event = &data->event;
 	int i;
 	int uppoint = 0;
-
+	int touchs = 0;
   if( 1 == visual_key_active)
     {
     	//pr_err("%s [touch] in vk test \n",__func__);
@@ -812,6 +812,7 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
     }	*/ 
 	/*protocol B*/
 	for (i = 0; i < event->touch_point; i++) {
+		input_mt_slot(data->input_dev,event->au8_finger_id[i]);
 		if (event->au8_touch_event[i]== 0 || event->au8_touch_event[i] == 2) {
 			if (event->au16_y[i] == 2000) {
 				if(g_FP_Disable_Touch)
@@ -844,9 +845,10 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 					focal_debug(DEBUG_VERBOSE, "[Focal][Touch][KEY] id=%d MENU KEY Press, key record = %d ! \n", event->au8_finger_id[i], key_record);
 				}
 			} else {
-			input_report_key(data->input_dev, BTN_TOUCH, 1);             /* touch down*/
-			input_report_abs(data->input_dev, ABS_MT_TRACKING_ID, event->au8_finger_id[i]); /*ID of touched point*/
-			input_report_abs(data->input_dev, ABS_MT_PRESSURE, event->pressure[i]);
+		//	input_report_key(data->input_dev, BTN_TOUCH, 1);             /* touch down*/
+			input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, true);
+		//	input_report_abs(data->input_dev, ABS_MT_TRACKING_ID, event->au8_finger_id[i]); /*ID of touched point*/
+			//input_report_abs(data->input_dev, ABS_MT_PRESSURE, event->pressure[i]);
 			input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, event->area[i]);
 			input_report_abs(data->input_dev, ABS_MT_POSITION_X, event->au16_x[i]);
 			input_report_abs(data->input_dev, ABS_MT_POSITION_Y, event->au16_y[i]);
@@ -861,7 +863,8 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 			input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, 16);//event->area[i]);
 			}*/
 			/* +++ asus jacob add for print touch location +++ */
-			
+			touchs |= BIT(event->au8_finger_id[i]);
+            data->touchs |= BIT(event->au8_finger_id[i]);
 			
 			report_touch_locatoin_count[i] += 1;
 			if ((report_touch_locatoin_count[i] % 200) == 0) {
@@ -871,7 +874,7 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 			}
 		}
 			/* --- asus jacob add for print touch location --- */
-			input_mt_sync(data->input_dev);
+			//input_mt_sync(data->input_dev);
 			/*printk("[Focal][Touch] report_abs_X = %d, report_abs_Y = %d  !\n", event->au16_x[i], event->au16_y[i]);*/
 
 		} else {
@@ -894,12 +897,29 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 			/* +++ asus jacob add for print touch location +++ */
 			report_touch_locatoin_count[i] = 0;
 			/* --- asus jacob add for print touch location --- */
-			input_mt_sync(data->input_dev);
+			input_mt_report_slot_state(data->input_dev,MT_TOOL_FINGER,false);
+			data->touchs &= ~BIT(event->au8_finger_id[i]);
+			//input_mt_sync(data->input_dev);
 		}
 	}
+	 if (unlikely(data->touchs ^ touchs))
+		{
+			for (i = 0; i < 10; i++)
+			{
+				if (BIT(i) & (data->touchs ^ touchs))
+				{
+					input_mt_slot(data->input_dev, i);
+					input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
+					//input_report_abs(data->input_dev, ABS_MT_PRESSURE, 0);
+
+				}
+			}
+		}
+	
+		data->touchs = touchs;
 
 	if(event->touch_point == uppoint) {
-		input_report_key(data->input_dev, BTN_TOUCH, 0);
+		//input_report_key(data->input_dev, BTN_TOUCH, 0);
 		if (key_record) {
 			if (key_record & 0x1) {
 				input_report_key(data->input_dev, KEY_BACK, 0);
@@ -916,6 +936,7 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 		/* +++ asus jacob add for print touch location +++ */
 		memset(report_touch_locatoin_count, 0, sizeof(report_touch_locatoin_count));
 		/* --- asus jacob add for print touch location --- */
+		input_report_key(data->input_dev, BTN_TOUCH, 0);
 		printk("[Focal][Touch] touch up !\n");
 	} else {
 		input_report_key(data->input_dev, BTN_TOUCH, event->touch_point > 0);
@@ -1430,12 +1451,13 @@ static void focal_reset_ic_work(struct work_struct *work)
 static void focal_suspend_work(struct work_struct *work)
 {
 	uint8_t buf[2] = {0};
+	unsigned int finger_count=0;
 	bool need_irq_disable = false;	// add for judge irq need disable
 
 	struct ftxxxx_ts_data *ts = ftxxxx_ts;
 
 	suspend_resume_process = true;
-
+	
 	printk("[Focal][Touch] %s : Touch suspend +++ \n", __func__);
 
 	ftxxxx_nosync_irq_disable(ts->client);
@@ -1561,9 +1583,13 @@ static void focal_suspend_work(struct work_struct *work)
 	/* +++ asus jacob add for print touch location +++ */
 	memset(report_touch_locatoin_count, 0, sizeof(report_touch_locatoin_count));
 	/* --- asus jacob add for print touch location --- */
-
+	 for (finger_count = 0; finger_count < 10; finger_count++)
+    {
+        input_mt_slot(ftxxxx_ts->input_dev, finger_count);
+        input_mt_report_slot_state(ftxxxx_ts->input_dev, MT_TOOL_FINGER, false);
+    }
 	input_report_key(ftxxxx_ts->input_dev, BTN_TOUCH, 0);
-	input_mt_sync(ftxxxx_ts->input_dev);
+	//input_mt_sync(ftxxxx_ts->input_dev);
 	if (key_record) {
 		if (key_record & 0x1) {
 			input_report_key(ftxxxx_ts->input_dev, KEY_BACK, 0);
@@ -2359,12 +2385,17 @@ static int ftxxxx_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
-
-	input_set_abs_params(input_dev, ABS_MT_TRACKING_ID, 0, CFG_MAX_TOUCH_POINTS, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 31, 0, 0);
+	//tyep b++
+	input_mt_init_slots(input_dev,CFG_MAX_TOUCH_POINTS,0);
+	//type b--
+	input_set_abs_params(input_dev, ABS_X, 0, ftxxxx_ts->x_max, 0, 0);
+	input_set_abs_params(input_dev, ABS_Y, 0, ftxxxx_ts->y_max, 0, 0);
+	//input_set_abs_params(input_dev, ABS_MT_TRACKING_ID, 0, CFG_MAX_TOUCH_POINTS, 0, 0);
+	//input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 31, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, PRESS_MAX, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, ftxxxx_ts->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0, ftxxxx_ts->y_max, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, PRESS_MAX, 0, 0);
+//	input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, PRESS_MAX, 0, 0);
 
 	input_dev->name = Focal_input_dev_name;
 	err = input_register_device(input_dev);

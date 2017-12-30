@@ -577,14 +577,13 @@ static void __pmic_arb_chained_irq(struct spmi_pmic_arb *pa, bool show)
 	int last = pa->max_apid >> 5;
 	u32 status, enable;
 	int i, id, apid;
-/* status based dispatch */
+	/* status based dispatch */
 	bool acc_valid = false;
 	u32 irq_status = 0;
 
 	for (i = first; i <= last; ++i) {
 		status = readl_relaxed(pa->acc_status +
 				      pa->ver_ops->owner_acc_status(pa->ee, i));
-
 		if (status)
 			acc_valid = true;
 
@@ -607,17 +606,19 @@ static void __pmic_arb_chained_irq(struct spmi_pmic_arb *pa, bool show)
 	/* ACC_STATUS is empty but IRQ fired check IRQ_STATUS */
 	if (!acc_valid) {
 		for (i = pa->min_apid; i <= pa->max_apid; i++) {
-		/* skip if APPS is not irq owner */
+			/* skip if APPS is not irq owner */
 			if (pa->apid_data[i].irq_owner != pa->ee)
 				continue;
 
 			irq_status = readl_relaxed(pa->intr +
-			pa->ver_ops->irq_status(i));
+						pa->ver_ops->irq_status(i));
 			if (irq_status) {
 				enable = readl_relaxed(pa->intr +
-				pa->ver_ops->acc_enable(i));
+						pa->ver_ops->acc_enable(i));
 				if (enable & SPMI_PIC_ACC_ENABLE_BIT) {
-					dev_dbg(&pa->spmic->dev, "Dispatching IRQ for apid=%d status=%x\n", i, irq_status);
+					dev_dbg(&pa->spmic->dev,
+						"Dispatching IRQ for apid=%d status=%x\n",
+						i, irq_status);
 					periph_interrupt(pa, i, show);
 				}
 			}

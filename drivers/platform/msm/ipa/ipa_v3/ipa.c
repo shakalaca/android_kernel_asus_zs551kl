@@ -2236,6 +2236,36 @@ static int ipa3_q6_set_ex_path_to_apps(void)
 			desc[num_descs].len = cmd_pyld->len;
 			num_descs++;
 		}
+
+		/* disable statuses for modem producers */
+		if (IPA_CLIENT_IS_Q6_PROD(client_idx)) {
+			ipa_assert_on(num_descs >= ipa3_ctx->ipa_num_pipes);
+
+			reg_write.skip_pipeline_clear = false;
+			reg_write.pipeline_clear_options =
+				IPAHAL_HPS_CLEAR;
+			reg_write.offset =
+				ipahal_get_reg_n_ofst(IPA_ENDP_STATUS_n,
+					ep_idx);
+			reg_write.value = 0;
+			reg_write.value_mask = ~0;
+			cmd_pyld = ipahal_construct_imm_cmd(
+				IPA_IMM_CMD_REGISTER_WRITE, &reg_write, false);
+			if (!cmd_pyld) {
+				IPAERR("fail construct register_write cmd\n");
+				ipa_assert();
+				return -EFAULT;
+			}
+
+			desc[num_descs].opcode = ipahal_imm_cmd_get_opcode(
+				IPA_IMM_CMD_REGISTER_WRITE);
+			desc[num_descs].type = IPA_IMM_CMD_DESC;
+			desc[num_descs].callback = ipa3_destroy_imm;
+			desc[num_descs].user1 = cmd_pyld;
+			desc[num_descs].pyld = cmd_pyld->data;
+			desc[num_descs].len = cmd_pyld->len;
+			num_descs++;
+		}
 	}
 
 	/* Will wait 500msecs for IPA tag process completion */
@@ -3150,7 +3180,9 @@ static unsigned int ipa3_get_bus_vote(void)
 */
 void ipa3_enable_clks(void)
 {
-	IPADBG("enabling IPA clocks and bus voting\n");
+	//IPADBG("enabling IPA clocks and bus voting\n");
+	IPAERR("enabling IPA clocks and bus voting\n");
+	//WARN_ON(1);
 
 	ipa3_ctx->ctrl->ipa3_enable_clks();
 
@@ -3183,7 +3215,9 @@ void _ipa_disable_clks_v3_0(void)
 */
 void ipa3_disable_clks(void)
 {
-	IPADBG("disabling IPA clocks and bus voting\n");
+	//IPADBG("disabling IPA clocks and bus voting\n");
+	IPAERR("disabling IPA clocks and bus voting\n");
+	//WARN_ON(1);
 
 	ipa3_ctx->ctrl->ipa3_disable_clks();
 
@@ -3880,6 +3914,9 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 	struct gsi_per_props gsi_props;
 	struct ipa3_uc_hdlrs uc_hdlrs = { 0 };
 
+	IPAERR("\n");
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+
 	if (ipa3_ctx->transport_prototype == IPA_TRANSPORT_TYPE_GSI) {
 		memset(&gsi_props, 0, sizeof(gsi_props));
 		gsi_props.ver = ipa3_get_gsi_ver(resource_p->ipa_hw_type);
@@ -3971,7 +4008,7 @@ static int ipa3_post_init(const struct ipa3_plat_drv_res *resource_p,
 		IPADBG(":ntn init ok\n");
 
 	ipa3_register_panic_hdlr();
-
+	/* holding the clock as PROXY for modem */
 	ipa3_ctx->q6_proxy_clk_vote_valid = true;
 
 	mutex_lock(&ipa3_ctx->lock);
@@ -4022,6 +4059,7 @@ fail_register_device:
 	kfree(ipa3_ctx->ctrl);
 	kfree(ipa3_ctx);
 	ipa3_ctx = NULL;
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 	return result;
 }
 
@@ -4410,7 +4448,7 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	spin_lock_init(&ipa3_ctx->ipa3_active_clients.spinlock);
 	IPA_ACTIVE_CLIENTS_PREP_SPECIAL(log_info, "PROXY_CLK_VOTE");
 	ipa3_active_clients_log_inc(&log_info, false);
-	ipa3_ctx->ipa3_active_clients.cnt = 1;
+	//ipa3_ctx->ipa3_active_clients.cnt = 1;
 
 	/* Assign resource limitation to each group */
 	ipa3_set_resorce_groups_min_max_limits();
@@ -4675,6 +4713,7 @@ static int ipa3_pre_init(const struct ipa3_plat_drv_res *resource_p,
 	else
 		return ipa3_post_init(resource_p, ipa_dev);
 
+	ipa3_disable_clks();
 	return 0;
 
 fail_ipa_init_interrupts:

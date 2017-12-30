@@ -885,6 +885,7 @@ static void send_file_work(struct work_struct *data)
 								&offset);
 		if (ret < 0) {
 			r = ret;
+			cdev->io_error = true;
 			break;
 		}
 
@@ -988,6 +989,7 @@ static void receive_file_work(struct work_struct *data)
 				mutex_unlock(&dev->read_mutex);
 				if (dev->state != STATE_OFFLINE)
 					dev->state = STATE_ERROR;
+				cdev->io_error = true;
 				break;
 			}
 			mutex_unlock(&dev->read_mutex);
@@ -1487,7 +1489,8 @@ mtp_function_bind(struct usb_configuration *c, struct usb_function *f)
 			mtp_fullspeed_out_desc.bEndpointAddress;
 	}
 
-        fi_mtp->func_inst.f = &dev->function;
+	fi_mtp->func_inst.f = &dev->function;
+	cdev->io_error = false;
 	DBG(cdev, "%s speed %s: IN/%s, OUT/%s\n",
 		gadget_is_superspeed(c->cdev->gadget) ? "super" :
 		(gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full"),
@@ -1499,11 +1502,11 @@ static void
 mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct mtp_dev	*dev = func_to_mtp(f);
-        struct mtp_instance *fi_mtp;
+	struct mtp_instance *fi_mtp;
 	struct usb_request *req;
 	int i;
 
-        fi_mtp = container_of(f->fi, struct mtp_instance, func_inst);
+	fi_mtp = container_of(f->fi, struct mtp_instance, func_inst);
 	mtp_string_defs[INTERFACE_STRING_INDEX].id = 0;
 	mutex_lock(&dev->read_mutex);
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
@@ -1517,7 +1520,7 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	dev->is_ptp = false;
 	kfree(f->os_desc_table);
 	f->os_desc_n = 0;
-        fi_mtp->func_inst.f = NULL;
+	fi_mtp->func_inst.f = NULL;
 }
 
 static int mtp_function_set_alt(struct usb_function *f,
@@ -1854,7 +1857,7 @@ struct usb_function_instance *alloc_inst_mtp_ptp(bool mtp_config)
 	config_group_init_type_name(&fi_mtp->func_inst.group,
 					"", &mtp_func_type);
 
-        mutex_init(&fi_mtp->dev->read_mutex);
+	mutex_init(&fi_mtp->dev->read_mutex);
 
 	return  &fi_mtp->func_inst;
 }

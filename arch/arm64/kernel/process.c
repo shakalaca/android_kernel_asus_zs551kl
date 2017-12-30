@@ -60,6 +60,9 @@ unsigned long __stack_chk_guard __read_mostly;
 EXPORT_SYMBOL(__stack_chk_guard);
 #endif
 
+//added by jack for crash log format
+int g_printing_regs;
+
 /*
  * Function pointers to optional machine specific functions
  */
@@ -237,7 +240,8 @@ void __show_regs(struct pt_regs *regs)
 {
 	int i, top_reg;
 	u64 lr, sp;
-
+	//do not print time stamps
+	g_printing_regs = 1;
 	if (compat_user_mode(regs)) {
 		lr = regs->compat_lr;
 		sp = regs->compat_sp;
@@ -262,6 +266,8 @@ void __show_regs(struct pt_regs *regs)
 	if (!user_mode(regs))
 		show_extra_register_data(regs, 64);
 	printk("\n");
+	//do not print time stamps
+	g_printing_regs = 0;	
 }
 
 void show_regs(struct pt_regs * regs)

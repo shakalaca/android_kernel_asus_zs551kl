@@ -90,6 +90,8 @@ static int g_module_vendor;
 
 extern bool g_Charger_mode;
 bool g_FP_Disable_Touch = false;
+extern u32 g_update_bl;
+
 
 struct fp_device_data {
 	/* +++ common part +++ */
@@ -1292,9 +1294,6 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         pr_info("[JK] GF_IOC_TOUCH_DISABLE_MASK !\n");
         break;
     case GF_IOC_CLEAN_EARLY_WAKE_HINT:
-        if(gf_dev->fb_black == 0)
-            pr_info("Screen on, Skip reset wake up hint !\n");
-        else
 	        gf_dev->FP_ID2 = 1;
         break;
 	default:
@@ -1323,14 +1322,15 @@ static irqreturn_t gf_irq(int irq, void *handle)
 	kobject_uevent(&gf_dev->spi->dev.kobj, KOBJ_CHANGE);
 
 #if GF_EARLY_WAKE
-	if (gf_dev->fb_black & gf_dev->FP_ID2) {
+	if ((!g_update_bl) & gf_dev->FP_ID2) {
 		input_report_key(gf_dev->input, KEY_F22, 1);
 		input_sync(gf_dev->input);
-		mdelay(3);
 		input_report_key(gf_dev->input, KEY_F22, 0);
 		input_sync(gf_dev->input);
 		gf_dev->FP_ID2 = 0;
-	}
+	} else {
+                gf_dev->FP_ID2 = 0;
+        }
 
 #endif
 
@@ -1464,7 +1464,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		case FB_BLANK_POWERDOWN:
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 1;
-				gf_dev->FP_ID2 = 1;
+				//gf_dev->FP_ID2 = 1;
 				g_FP_Disable_Touch = false;
                                 if (gf_dev->module_vendor == vendor_module_gdix_3266A) {
                                         temp = GF_NET_EVENT_FB_BLACK;
@@ -1483,7 +1483,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 		case FB_BLANK_UNBLANK:
 			if (gf_dev->device_available == 1) {
 				gf_dev->fb_black = 0;
-				gf_dev->FP_ID2 = 0;
+				//gf_dev->FP_ID2 = 0;
                                 if (gf_dev->module_vendor == vendor_module_gdix_3266A) {
                                         temp = GF_NET_EVENT_FB_UNBLACK;
                                         sendnlmsg(&temp);
@@ -2369,6 +2369,7 @@ static int fp_sensor_probe(struct platform_device *pdev)
 	fp_device->power_init = false;
 	fp_device->FpTimer_expires = 0;
 	fp_device->enable_touch_mask = 0;
+        fp_device->FP_ID2 = 0;
 	/* Inin status */
 
 	/*status = fp_pars_dt(&pdev->dev, fp_device);*/
@@ -2669,6 +2670,13 @@ static int fp_sensor_probe(struct platform_device *pdev)
 			}
 
 	status = pinctrl_select_state(fp_device->pinctrl, fp_device->pins_active);
+
+	printk("[FP] charging mode status : %d\n", g_Charger_mode);
+	if (g_Charger_mode) {
+		if (fp_power_on(fp_device, false) < 0) {
+			printk("[FP] opps fp_power_on ! \n");
+		}
+	}
 
 	printk("[Jacob] report status = %d \n", status);
 

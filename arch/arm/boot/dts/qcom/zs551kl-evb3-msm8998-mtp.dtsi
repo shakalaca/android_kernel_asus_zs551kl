@@ -917,6 +917,7 @@
 	USB_LOW_IMPEDANCE-gpios63 = <&tlmm 63 0x0>;
 	USB_LID_EN-gpios62 = <&tlmm 62 0x0>;
 	USB_WATER_PROOF-gpios77 = <&tlmm 77 0x0>;
+	PW_ADC_EN-gpios90 = <&tlmm 90 0x0>;
 };
 //ASUS BSP : Austin_Tsneg Charger ---
 

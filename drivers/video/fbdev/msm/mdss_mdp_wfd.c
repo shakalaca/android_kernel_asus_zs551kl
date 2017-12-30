@@ -323,7 +323,8 @@ int mdss_mdp_wb_import_data(struct device *device,
 		flags = MDP_SECURE_OVERLAY_SESSION;
 
 	if (buffer->plane_count > MAX_PLANES) {
-		pr_err("buffer plane_count exceeds MAX_PLANES limit:%d", buffer->plane_count);
+		pr_err("buffer plane_count exceeds MAX_PLANES limit:%d",
+				buffer->plane_count);
 		return -EINVAL;
 	}
 

@@ -40,6 +40,20 @@ extern phys_addr_t RTB_BUFFER_PA;
 #define SUBSYS_R_MAXLEN (512)
 #define SUBSYS_C_MAXLEN (30)
 /*ASUS-BBSP SubSys Health Record---*/
+//[+++]Record the impoartant power event
+#define ASUS_ERCLOG_PATH ASUS_ASDF_BASE_DIR"ASUSErclog"
+#define ASUS_ERCLOG_STR_MAXLEN (256)
+#define ASUS_ERCLOG_MAX_ITEM (20)
+#define ASUS_ERCLOG_FILENAME_MAXLEN (128)
+
+#define ASUS_USB_THERMAL_ALERT "ASUS_thermal_alert"
+#define ASUS_VBUS_LOW_IMPEDANCE  "ASUS_VBUS_low_impedance"
+#define ASUS_AICL_SUSPEND "ASUS_AICL_suspend"
+#define ASUS_JEITA_HARD_HOT "ASUS_JEITA_hard_hot"
+#define ASUS_JEITA_HARD_COLD "ASUS_JEITA_hard_cold"
+#define ASUS_USB_WATER_INVADE "ASUS_USB_water_invade"
+#define ASUS_OUTPUT_OVP "ASUS_Output_OVP"
+//[---]Record the impoartant power event
 
 void save_all_thread_info(void);
 void delta_all_thread_info(void);
@@ -52,6 +66,7 @@ void get_last_shutdown_log(void);
 void printk_lcd(const char *fmt, ...);
 void printk_lcd_xy(int xx, int yy, unsigned int color, const char *fmt, ...);
 void ASUSEvtlog(const char *fmt, ...);
+void ASUSErclog(const char * filename, const char *fmt, ...);//Record the important power event
 void SubSysHealthRecord(const char *fmt, ...);/*ASUS-BBSP SubSys Health Record+*/
 //20101202_Bruno: added to get debug mask value
 bool isASUS_MSK_set(const char *fmt);

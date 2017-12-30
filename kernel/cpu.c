@@ -498,8 +498,8 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
 		nr_calls--;
-		pr_warn("%s: attempt to bring up CPU %u failed\n",
-			__func__, cpu);
+		pr_warn_ratelimited("%s: attempt to bring up CPU %u failed\n",
+				    __func__, cpu);
 		goto out_notify;
 	}
 
@@ -586,8 +586,9 @@ out:
 
 	if (!switch_err) {
 		switch_err = switch_to_fair_policy();
-		pr_err("Hotplug policy switch err. Task %s pid=%d\n",
-					current->comm, current->pid);
+		if (switch_err)
+			pr_err("Hotplug policy switch err=%d Task %s pid=%d\n",
+				switch_err, current->comm, current->pid);
 	}
 
 	return err;
@@ -668,7 +669,7 @@ void enable_nonboot_cpus(void)
 		error = _cpu_up(cpu, 1);
 		trace_suspend_resume(TPS("CPU_ON"), cpu, false);
 		if (!error) {
-			pr_info("CPU%d is up\n", cpu);
+			//pr_info("CPU%d is up\n", cpu);
 			cpu_device = get_cpu_device(cpu);
 			if (!cpu_device)
 				pr_err("%s: failed to get cpu%d device\n",

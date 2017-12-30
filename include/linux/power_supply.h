@@ -252,6 +252,15 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CONNECTOR_HEALTH,
 	POWER_SUPPLY_PROP_CTM_CURRENT_MAX,
 	POWER_SUPPLY_PROP_HW_CURRENT_MAX,
+	POWER_SUPPLY_PROP_REAL_TYPE,
+	POWER_SUPPLY_PROP_PR_SWAP,
+	//[+++]Add the interface for charging debug apk
+	POWER_SUPPLY_PROP_ASUS_APSD_RESULT,
+	POWER_SUPPLY_PROP_ASUS_ADAPTER_ID,
+	POWER_SUPPLY_PROP_ASUS_IS_LEGACY_CABLE,
+	POWER_SUPPLY_PROP_ASUS_ICL_SETTING,
+	POWER_SUPPLY_PROP_ASUS_TOTAL_FCC,
+	//[---]Add the interface for charging debug apk
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 	/* Properties of type `const char *' */
@@ -274,6 +283,7 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_HVDCP_3,	/* Efficient High Voltage DCP */
 	POWER_SUPPLY_TYPE_USB_PD,	/* Power Delivery */
 	POWER_SUPPLY_TYPE_WIRELESS,	/* Accessory Charger Adapters */
+	POWER_SUPPLY_TYPE_USB_FLOAT,	/* Floating charger */
 	POWER_SUPPLY_TYPE_BMS,		/* Battery Monitor System */
 	POWER_SUPPLY_TYPE_PARALLEL,	/* Parallel Path */
 	POWER_SUPPLY_TYPE_MAIN,		/* Main Path */

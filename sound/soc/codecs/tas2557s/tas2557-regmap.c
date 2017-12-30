@@ -59,6 +59,8 @@
 #define LOW_TEMPERATURE_GAIN 6
 #define LOW_TEMPERATURE_COUNTER 12
 
+extern bool g_Charger_mode;
+
 /*
 * tas2557_i2c_write_device : write single byte to device
 * platform dependent, need platform specific support
@@ -1274,6 +1276,9 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	hrtimer_init(&pTAS2557->mtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	pTAS2557->mtimer.function = temperature_timer_func;
 	INIT_WORK(&pTAS2557->mtimerwork, timer_work_routine);
+
+	if (g_Charger_mode)
+		return 0;
 
 	nResult = request_firmware_nowait(THIS_MODULE, 1, TAS2557_FW_NAME,
 		pTAS2557->dev, GFP_KERNEL, pTAS2557, tas2557_fw_ready);

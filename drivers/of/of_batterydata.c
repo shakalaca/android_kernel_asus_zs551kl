@@ -312,7 +312,7 @@ static int64_t of_batterydata_convert_battery_id_kohm(int batt_id_uv,
 
 bool battIDwithinRange(struct device_node *node ,int batt_id_kohm, int id_range_pct){
 
-	int i=0, limit=0, rc=0, delta=0;
+	int i = 0, limit = 0, rc = 0, delta = 0;
 	struct batt_ids batt_ids;
 	bool in_range = false;	
 
@@ -320,15 +320,15 @@ bool battIDwithinRange(struct device_node *node ,int batt_id_kohm, int id_range_
 							"qcom,batt-id-kohm",
 							&batt_ids);
 
-			for (i = 0; i < batt_ids.num; i++) {
+			for (i = 0; i < batt_ids.num; i++) {				
 				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
 				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
 				in_range = (delta <= limit);
 				if(in_range)
 					break;
 			}
-			pr_info("[BMS] adc id(%d), profile id(%d) is %s within range\n",batt_id_kohm,
-				batt_ids.kohm[0], in_range?"":"not");
+			pr_info("[BMS] adc id(%d), profile id(%d) is %s within range\n", batt_id_kohm,
+				batt_ids.kohm[i], in_range?"":"not");
 			return in_range;
 
 }
@@ -359,48 +359,46 @@ struct device_node *of_batterydata_get_best_profile(
 	if (batt_type != NULL)
 		pr_info("[BMS] target profile name: %s",batt_type);
 
-	
 	/*
 	 * Find the battery data with a battery id resistor closest to this one
 	 */
 	for_each_child_of_node(batterydata_container_node, node) {
 
-			rc = of_property_read_string(node, "qcom,battery-type",
-							&battery_type);
-			if(!rc && battery_type != NULL)
-				pr_info("[BMS] checking profile - %s ...\n",battery_type);
-				
-			if (batt_type != NULL) {							
-				if (!rc && strcmp(battery_type, batt_type) == 0
-					&& battIDwithinRange(node, batt_id_kohm, id_range_pct)) {
-						best_node = node;
-						best_id_kohm = batt_id_kohm;
-						break;
-				}
-			} 
-		
-			rc = of_batterydata_read_batt_id_kohm(node,
-							"qcom,batt-id-kohm",
-							&batt_ids);
-			if (rc)
-				continue;
-			for (i = 0; i < batt_ids.num; i++) {
-				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
-				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
-				in_range = (delta <= limit);
-				/*
-				 * Check if the delta is the lowest one
-				 * and also if the limits are in range
-				 * before selecting the best node.
-				 */
-				if ((delta < best_delta || !best_node)
-					&& in_range) {
+		rc = of_property_read_string(node, "qcom,battery-type",
+						&battery_type);
+		if (!rc && battery_type != NULL)
+			pr_info("[BMS] checking profile - %s ...\n", battery_type);
+
+		if (batt_type != NULL) {							
+			if (!rc && strcmp(battery_type, batt_type) == 0
+				&& battIDwithinRange(node, batt_id_kohm, id_range_pct)) {
 					best_node = node;
-					best_delta = delta;
-					best_id_kohm = batt_ids.kohm[i];
-				}
+					best_id_kohm = batt_id_kohm;
+					break;
 			}
-		
+		}
+
+		rc = of_batterydata_read_batt_id_kohm(node,
+						"qcom,batt-id-kohm",
+						&batt_ids);
+		if (rc)
+			continue;
+		for (i = 0; i < batt_ids.num; i++) {
+			delta = abs(batt_ids.kohm[i] - batt_id_kohm);
+			limit = (batt_ids.kohm[i] * id_range_pct) / 100;
+			in_range = (delta <= limit);
+			/*
+			 * Check if the delta is the lowest one
+			 * and also if the limits are in range
+			 * before selecting the best node.
+			 */
+			if ((delta < best_delta || !best_node)
+				&& in_range) {
+				best_node = node;
+				best_delta = delta;
+				best_id_kohm = batt_ids.kohm[i];
+			}
+		}
 	}
 
 	if (best_node == NULL) {

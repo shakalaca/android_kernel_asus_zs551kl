@@ -59,6 +59,8 @@
 extern void printascii(char *);
 #endif
 
+extern int g_printing_regs;
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -252,6 +254,8 @@ static DEFINE_RAW_SPINLOCK(logbuf_lock);
 static char *asus_log_buf = NULL;
 static bool is_logging_to_asus_buffer = false;
 void *memset_nc(void *s, int c, size_t count);
+static int IRQcount = 1;//For IRQ200 issue debug
+static int IRQtotal = 0;//For IRQ200 issue debug
 
 /* this memcpy_nc() is for non cached memory */
 static void *memcpy_nc(void *dest, const void *src, size_t n)
@@ -1109,6 +1113,9 @@ static size_t print_time(u64 ts, char *buf)
 	struct rtc_time tm;
 	int this_cpu;
 	this_cpu = smp_processor_id();
+
+	if(g_printing_regs)
+		return 0;
 
 	if (!printk_time)
 		return 0;
@@ -2196,6 +2203,8 @@ int add_preferred_console(char *name, int idx, char *options)
 }
 
 bool console_suspend_enabled = true;
+bool is_ramdump_enabled = false;//Used for IRQ200 issue
+bool is_vminTrace_enabled = 0;
 EXPORT_SYMBOL(console_suspend_enabled);
 
 static int __init console_suspend_disable(char *str)
@@ -2209,6 +2218,13 @@ module_param_named(console_suspend, console_suspend_enabled,
 MODULE_PARM_DESC(console_suspend, "suspend console during suspend"
 	" and hibernate operations");
 
+//[+++] Create a file node to get the status of getting RAMDUMP
+module_param_named(ramdump_enabled, is_ramdump_enabled,
+		bool, S_IRUGO | S_IWUSR);
+//need check /vendor/asus/debug_sh/init.asus.debugtool.rc -> write /sys/module/printk/parameters/ramdump_enabled 1
+module_param_named(vminTrace_enabled, is_vminTrace_enabled,
+		bool, S_IRUGO | S_IWUSR);
+//[---] Create a file node to get the status of getting RAMDUMP
 /**
  * suspend_console - suspend the console subsystem
  *
@@ -2231,14 +2247,38 @@ void resume_console(void)
 	int i;
 	nSuspendInProgress = 0;
 	ASUSEvtlog("[UTS] System Resume\n");
+	if (is_ramdump_enabled) {
+		printk("[PM] QPST RAMDUMP ENABLE: %s\n", is_ramdump_enabled ? "True" : "False");
+		printk("[PM] vminTrace ENABLE(IRQ200) : %s\n", is_vminTrace_enabled ? "True" : "False");
+	}
 //[+++][PM]Show GIC_IRQ wakeup information in AsusEvtlog
 	if (pm_pwrcs_ret) {
 		if (gic_irq_cnt>0) {
-			for (i=0;i<gic_irq_cnt;i++) {
+			for (i=0;i<gic_irq_cnt;i++)
 				ASUSEvtlog("[PM] IRQs triggered: %d\n", gic_resume_irq[i]);
-				//if (gic_resume_irq[i] == 222)
-					//ASUSEvtlog("[PM] SPMI name : %s", spmi_wakeup);
+
+			//[+++]Add for IRQ200 issue debug
+			if (is_ramdump_enabled && is_vminTrace_enabled) {
+					if (gic_irq_cnt == 1) {
+						IRQtotal++;
+						if (IRQtotal >= 200) {
+								if (IRQcount < 6) {
+									IRQcount++;
+								} else {
+									ASUSEvtlog("[PM] IRQ200 issue is triggered\n");
+									BUG_ON(1);
+								}
+						} else {
+						}
+					} else {
+						IRQcount = 1;
+					}
+			} else {
+					IRQcount = 1;
+					IRQtotal = 1;
 			}
+			//[---]Add for IRQ200 issue debug
+
 			gic_irq_cnt=0;  //clear log count
 		}
 		pm_pwrcs_ret=0;

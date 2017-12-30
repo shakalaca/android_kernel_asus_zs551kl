@@ -418,7 +418,8 @@ static int proximity_turn_onoff(bool bOn)
 
 static int proximity_set_threshold(void)
 {
-	int ret = 0;	
+	int ret = 0;
+	int temp = 0;
 
 	/* Check Hardware Support First */
 	if(ALSPS_FRGB_hw_client->mpsensor_hw->proximity_hw_set_hi_threshold == NULL) {
@@ -472,6 +473,8 @@ static int proximity_set_threshold(void)
 	}else{
 		err("Proximity read DEFAULT Low Calibration : %d\n", g_ps_data->g_ps_calvalue_lo);
 	}
+	temp = (g_ps_data->g_ps_calvalue_hi - g_ps_data->g_ps_calvalue_lo) / 3;
+	g_ps_data->g_ps_calvalue_lo = temp + g_ps_data->g_ps_calvalue_lo;
 	ret = ALSPS_FRGB_hw_client->mpsensor_hw->proximity_hw_set_lo_threshold(g_ps_data->g_ps_calvalue_lo);
 	if(ret < 0){
 		err("proximity_hw_set_hi_threshold ERROR. \n");
@@ -1490,6 +1493,7 @@ int mlight_store_switch_onoff(bool bOn)
 		}			
 	}else{
 		log("Light Sensor is already %s", bOn?"ON":"OFF");
+		queue_delayed_work(ALSPS_FRGB_delay_workqueue, &light_polling_lux_work, msecs_to_jiffies(LIGHT_TURNON_DELAY_TIME));
 	}
 	mutex_unlock(&g_alsps_frgb_lock);
 

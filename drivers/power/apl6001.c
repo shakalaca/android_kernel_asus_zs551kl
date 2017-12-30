@@ -46,6 +46,7 @@ EXPORT_SYMBOL(apl6001_ready);
 
 //Define register addresses of apl6001 0X38
 #define apl6001_raddr 0x38
+#define PW_ADC_EN_GPIO	90
 
 struct apl6001_data
 {
@@ -71,6 +72,7 @@ int apl6001_write_reg(uint8_t slave_addr, uint8_t cmd_reg, uint8_t write_val)
 		printk("%s: failed to write i2c addr=%x\n",
 			__func__, slave_addr);
 	}
+
 	return ret;
 }
 
@@ -186,12 +188,23 @@ static ssize_t adc_ack_show(struct device *dev, struct device_attribute *da,
 	u8 val = 0;
 	int ret = 0;
 	bool ack = 1;
+	int rc;
+
+	rc = gpio_direction_output(PW_ADC_EN_GPIO, 0);
+	if (rc)
+		printk("[BAT][CHG] adc_ack_show : Failed to pull-low PW_ADC_EN-gpios90\n");
+
+	msleep(100);
 
 	ret = apl6001_read_reg(apl6001_raddr, 0x00000004, &val);
 	if (ret < 0)
 		ack = 0;
 	else
 		ack = 1;
+
+	rc = gpio_direction_output(PW_ADC_EN_GPIO, 1);
+	if (rc)
+		printk("[BAT][CHG] adc_ack_show : Failed to pull-high PW_ADC_EN-gpios90\n");
 
 	return sprintf(buf, "%d\n", ack);
 }

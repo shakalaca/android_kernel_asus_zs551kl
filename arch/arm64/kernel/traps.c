@@ -146,13 +146,13 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 
 	set_fs(fs);
 }
-
+extern int g_printing_regs;
 static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
 	struct stackframe frame;
 	unsigned long irq_stack_ptr;
 	int skip;
-
+g_printing_regs = 1;
 	/*
 	 * Switching between stacks is valid when tracing current and in
 	 * non-preemptible context.
@@ -223,6 +223,7 @@ static void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 				 stack + sizeof(struct pt_regs), false);
 		}
 	}
+g_printing_regs = 0;	
 }
 
 void show_stack(struct task_struct *tsk, unsigned long *sp)

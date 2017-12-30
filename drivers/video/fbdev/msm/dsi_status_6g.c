@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 
 #include "mdss_dsi.h"
 #include "mdss_mdp.h"
+#include "mdss_debug.h"
 
 /*
  * mdss_check_te_status() - Check the status of panel for TE based ESD.
@@ -158,6 +159,7 @@ void mdss_check_dsi_ctrl_status(struct work_struct *work, uint32_t interval)
 		ctl->ops.wait_pingpong(ctl, NULL);
 
 	pr_debug("%s: DSI ctrl wait for ping pong done\n", __func__);
+	MDSS_XLOG(mipi->mode);
 
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 	ret = ctrl_pdata->check_status(ctrl_pdata);
@@ -191,7 +193,7 @@ status_dead:
 	g_esd_fail++;
 	pr_err("[Display] %s: status_dead, g_esd_fail(%d) +++ \n", __func__, g_esd_fail);
 
-	if (g_esd_fail > 3) {
+	if (g_esd_fail > 1) {
 		g_esd_fail = 0;
 		mdss_fb_report_panel_dead(pstatus_data->mfd);
 	} else {

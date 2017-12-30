@@ -1459,7 +1459,6 @@ static int32_t q6asm_srvc_callback(struct apr_client_data *data, void *priv)
 			}
 			pr_debug("%s: Clearing custom topology\n", __func__);
 		}
-		this_mmap.apr = NULL;
 
 		cal_utils_clear_cal_block_q6maps(ASM_MAX_CAL_TYPES, cal_data);
 		common_client.mmap_apr = NULL;
@@ -1673,8 +1672,10 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 		mutex_lock(&ac->cmd_lock);
 		spin_lock(&(session[session_id].session_lock));
 		atomic_set(&ac->reset, 1);
-		if (ac->apr == NULL)
+		if (ac->apr == NULL) {
 			ac->apr = ac->apr2;
+			ac->apr2 = NULL;
+		}
 		pr_debug("%s: Reset event is received: %d %d apr[%pK]\n",
 			__func__,
 			data->reset_event, data->reset_proc, ac->apr);
@@ -3186,11 +3187,12 @@ int q6asm_set_shared_circ_buff(struct audio_client *ac,
 	open->shared_circ_buf_start_phy_addr_lsw =
 			lower_32_bits(buf_circ->phys);
 	open->shared_circ_buf_start_phy_addr_msw =
-			upper_32_bits(buf_circ->phys);
+			msm_audio_populate_upper_32_bits(buf_circ->phys);
 	open->shared_circ_buf_size = bufsz * bufcnt;
 
 	open->map_region_circ_buf.shm_addr_lsw = lower_32_bits(buf_circ->phys);
-	open->map_region_circ_buf.shm_addr_msw = upper_32_bits(buf_circ->phys);
+	open->map_region_circ_buf.shm_addr_msw =
+			msm_audio_populate_upper_32_bits(buf_circ->phys);
 	open->map_region_circ_buf.mem_size_bytes = bytes_to_alloc;
 
 	mutex_unlock(&ac->cmd_lock);
@@ -3232,10 +3234,12 @@ int q6asm_set_shared_pos_buff(struct audio_client *ac,
 	open->shared_pos_buf_num_regions = 1;
 	open->shared_pos_buf_property_flag = 0x00;
 	open->shared_pos_buf_phy_addr_lsw = lower_32_bits(buf_pos->phys);
-	open->shared_pos_buf_phy_addr_msw = upper_32_bits(buf_pos->phys);
+	open->shared_pos_buf_phy_addr_msw =
+			msm_audio_populate_upper_32_bits(buf_pos->phys);
 
 	open->map_region_pos_buf.shm_addr_lsw = lower_32_bits(buf_pos->phys);
-	open->map_region_pos_buf.shm_addr_msw = upper_32_bits(buf_pos->phys);
+	open->map_region_pos_buf.shm_addr_msw =
+			msm_audio_populate_upper_32_bits(buf_pos->phys);
 	open->map_region_pos_buf.mem_size_bytes = bytes_to_alloc;
 
 done:

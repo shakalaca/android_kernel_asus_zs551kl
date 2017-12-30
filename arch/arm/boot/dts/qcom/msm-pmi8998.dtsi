@@ -169,7 +169,7 @@
 
 			qcom,fcc-max-ua = <1650000>;
 			qcom,fv-max-uv = <4357000>;
-			qcom,usb-icl-ua = <1000000>;
+			qcom,usb-icl-ua = <3000000>;
 			qcom,float-option = <1>;
 
 			qcom,chgr@1000 {
@@ -341,8 +341,9 @@
 			io-channels = <&pmi8998_rradc 0>;
 			io-channel-names = "rradc_batt_id";
 			qcom,rradc-base = <0x4500>;
-			qcom,fg-esr-timer-awake = <96>;
-			qcom,fg-esr-timer-asleep = <256>;
+			qcom,fg-esr-timer-awake = <96 96>;
+			qcom,fg-esr-timer-asleep = <256 256>;
+			qcom,fg-esr-timer-charging = <0 96>;
 			qcom,cycle-counter-en;
 			qcom,fg-force-load-profile;
 
@@ -354,10 +355,10 @@
 			qcom,fg-jeita-hyst-temp = <3>;
 
 			qcom,fg-cutoff-voltage = <3400>;
-			qcom,fg-empty-voltage = <3350>;
+			qcom,fg-empty-voltage = <3000>;
 
 			qcom,fg-auto-recharge-soc;
-			qcom,fg-recharge-voltage = <4280>;
+			qcom,fg-recharge-voltage = <4157>;
 			qcom,fg-recharge-soc-thr = <98>;
 	
 			
@@ -670,7 +671,7 @@
 			qcom,sc-deb-cycles = <8>;
 			qcom,en-brake;
 			qcom,brake-pattern = [03 03 03 03];
-			qcom,wave-samples = [34 34 20 B4 B4 80 80 80];
+			qcom,wave-samples = [34 34 20 B4 B4 80 80 80]; //3cycle
 			qcom,lra-high-z = "opt1";
 			qcom,lra-auto-res-mode = "none";
 			qcom,lra-res-cal-period = <4>;
@@ -741,9 +742,6 @@
 				qcom,ires-ua = <12500>;
 				qcom,hdrm-voltage-mv = <325>;
 				qcom,hdrm-vol-hi-lo-win-mv = <100>;
-				pinctrl-names = "led_enable","led_disable";
-				pinctrl-0 = <&led_enable>;
-				pinctrl-1 = <&led_disable>;
 			};
 
 			pmi8998_torch0: qcom,torch_0 {
@@ -780,9 +778,6 @@
 				qcom,ires-ua = <12500>;
 				qcom,hdrm-voltage-mv = <325>;
 				qcom,hdrm-vol-hi-lo-win-mv = <100>;
-				pinctrl-names = "led_enable","led_disable";
-				pinctrl-0 = <&led_enable>;
-				pinctrl-1 = <&led_disable>;
 			};
 
 			pmi8998_switch0: qcom,led_switch_0 {

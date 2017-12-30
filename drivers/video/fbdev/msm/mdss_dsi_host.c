@@ -165,7 +165,14 @@ void mdss_dsi_clk_req(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	MDSS_XLOG(ctrl->ndx, enable, ctrl->mdp_busy, current->pid,
 		client);
-	if (enable == 0) {
+	/*
+	 * ensure that before going into ecg or turning
+	 * off the clocks, cmd_mdp_busy is not true. During a
+	 * race condition, clocks are turned off and so the
+	 * isr for cmd_mdp_busy does not get cleared in hw.
+	 */
+	if (enable == MDSS_DSI_CLK_OFF ||
+		enable == MDSS_DSI_CLK_EARLY_GATE) {
 		/* need wait before disable */
 		mutex_lock(&ctrl->cmd_mutex);
 		mdss_dsi_cmd_mdp_busy(ctrl);
@@ -1563,11 +1570,13 @@ wait:
 		MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl",
 			"dsi0_phy", "dsi1_ctrl", "dsi1_phy",
 			"vbif", "vbif_nrt", "dbg_bus",
-			"vbif_dbg_bus", "panic");
+			"vbif_dbg_bus", "dsi_dbg_bus", "panic");
 
 	/* mask out overflow errors */
 	if (ignore_underflow)
 		mdss_dsi_set_reg(ctrl_pdata, 0x10c, 0x0f0000, 0x0f0000);
+
+	MDSS_XLOG(ctrl_pdata->ndx, ctrl_pdata->mdp_busy);
 	MIPI_OUTP(ctrl_pdata->ctrl_base + 0x098, 0x01); /* trigger  */
 	wmb();
 
@@ -2200,6 +2209,7 @@ static int mdss_dsi_cmd_dma_tx(struct mdss_dsi_ctrl_pdata *ctrl,
 
 	MIPI_OUTP((ctrl->ctrl_base) + 0x090, 0x01);
 	wmb();
+	MDSS_XLOG(ctrl->dma_addr, len);
 
 	if (ctrl->do_unicast) {
 		/* let cmd_trigger to kickoff later */
@@ -2570,15 +2580,8 @@ void mdss_dsi_cmd_mdp_busy(struct mdss_dsi_ctrl_pdata *ctrl)
 		if (!ctrl->mdp_busy)
 			rc = 1;
 		spin_unlock_irqrestore(&ctrl->mdp_lock, flags);
-		if (!rc) {
-			if (mdss_dsi_mdp_busy_tout_check(ctrl)) {
-				pr_err("%s: timeout error\n", __func__);
-				MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl",
-					"dsi0_phy", "dsi1_ctrl", "dsi1_phy",
-					"vbif", "vbif_nrt", "dbg_bus",
-					"vbif_dbg_bus", "panic");
-			}
-		}
+		if (!rc && mdss_dsi_mdp_busy_tout_check(ctrl))
+			pr_err("%s: timeout error\n", __func__);
 	}
 	pr_debug("%s: done pid=%d\n", __func__, current->pid);
 	MDSS_XLOG(ctrl->ndx, ctrl->mdp_busy, current->pid, XLOG_FUNC_EXIT);
@@ -3046,7 +3049,10 @@ bool mdss_dsi_ack_err_status(struct mdss_dsi_ctrl_pdata *ctrl)
 		 * warning message is ignored.
 		 */
 		if (ctrl->panel_data.panel_info.esd_check_enabled &&
-			(ctrl->status_mode == ESD_BTA) && (status & 0x1008000))
+			((ctrl->status_mode == ESD_BTA) ||
+			 (ctrl->status_mode == ESD_REG) ||
+			 (ctrl->status_mode == ESD_REG_NT35596)) &&
+			 (status & 0x1008000))
 			return false;
 
 		pr_err("%s: status=%x\n", __func__, status);
@@ -3199,7 +3205,7 @@ static void __dsi_error_counter(struct dsi_err_container *err_container)
 		pr_err("%s: panic in WQ as dsi error intrs within:%dms\n",
 				__func__, err_container->err_time_delta);
 		MDSS_XLOG_TOUT_HANDLER_WQ("mdp", "dsi0_ctrl", "dsi0_phy",
-			"dsi1_ctrl", "dsi1_phy", "panic");
+			"dsi1_ctrl", "dsi1_phy", "dsi_dbg_bus", "panic");
 	}
 }
 
@@ -3277,8 +3283,10 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 		 * cleared.
 		 */
 		if (ctrl->panel_data.panel_info.esd_check_enabled &&
-			(ctrl->status_mode == ESD_BTA) &&
-			(ctrl->panel_mode == DSI_VIDEO_MODE)) {
+			((ctrl->status_mode == ESD_BTA) ||
+			 (ctrl->status_mode == ESD_REG) ||
+			 (ctrl->status_mode == ESD_REG_NT35596)) &&
+			 (ctrl->panel_mode == DSI_VIDEO_MODE)) {
 			isr &= ~DSI_INTR_ERROR;
 			/* clear only overflow */
 			mdss_dsi_set_reg(ctrl, 0x0c, 0x44440000, 0x44440000);
@@ -3287,6 +3295,7 @@ irqreturn_t mdss_dsi_isr(int irq, void *ptr)
 	}
 
 	if (isr & DSI_INTR_VIDEO_DONE) {
+		MDSS_XLOG(ctrl->ndx, isr, 0x111);
 		spin_lock(&ctrl->mdp_lock);
 		mdss_dsi_disable_irq_nosync(ctrl, DSI_VIDEO_TERM);
 		complete(&ctrl->video_comp);

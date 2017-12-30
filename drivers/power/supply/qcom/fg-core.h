@@ -46,10 +46,16 @@
 			&& (value) <= (right)))
 
 /* Awake votable reasons */
-#define SRAM_READ	"fg_sram_read"
-#define SRAM_WRITE	"fg_sram_write"
-#define PROFILE_LOAD	"fg_profile_load"
-#define DELTA_SOC	"fg_delta_soc"
+#define SRAM_READ		"fg_sram_read"
+#define SRAM_WRITE		"fg_sram_write"
+#define PROFILE_LOAD		"fg_profile_load"
+#define DELTA_SOC		"fg_delta_soc"
+
+/* Delta BSOC irq votable reasons */
+#define DELTA_BSOC_IRQ_VOTER	"fg_delta_bsoc_irq"
+
+/* Battery missing irq votable reasons */
+#define BATT_MISS_IRQ_VOTER	"fg_batt_miss_irq"
 
 #define DEBUG_PRINT_BUFFER_SIZE		64
 /* 3 byte address + 1 space character */
@@ -216,6 +222,12 @@ enum slope_limit_status {
 	SLOPE_LIMIT_NUM_COEFFS,
 };
 
+enum esr_timer_config {
+	TIMER_RETRY = 0,
+	TIMER_MAX,
+	NUM_ESR_TIMERS,
+};
+
 /* DT parameters for FG device */
 struct fg_dt_props {
 	bool	force_load_profile;
@@ -231,9 +243,9 @@ struct fg_dt_props {
 	int	recharge_soc_thr;
 	int	recharge_volt_thr_mv;
 	int	rsense_sel;
-	int	esr_timer_charging;
-	int	esr_timer_awake;
-	int	esr_timer_asleep;
+	int	esr_timer_charging[NUM_ESR_TIMERS];
+	int	esr_timer_awake[NUM_ESR_TIMERS];
+	int	esr_timer_asleep[NUM_ESR_TIMERS];
 	int	rconn_mohms;
 	int	esr_clamp_mohms;
 	int	cl_start_soc;
@@ -351,6 +363,8 @@ struct fg_chip {
 	struct fg_memif		*sram;
 	struct fg_irq_info	*irqs;
 	struct votable		*awake_votable;
+	struct votable		*delta_bsoc_irq_en_votable;
+	struct votable		*batt_miss_irq_en_votable;
 	struct fg_sram_param	*sp;
 	struct fg_alg_flag	*alg_flags;
 	int			*debug_mask;
@@ -382,18 +396,19 @@ struct fg_chip {
 	int			maint_soc;
 	int			delta_soc;
 	int			last_msoc;
+	int			esr_timer_charging_default[NUM_ESR_TIMERS];
 	enum slope_limit_status	slope_limit_sts;
 	bool			profile_available;
 	bool			profile_loaded;
 	bool			battery_missing;
 	bool			fg_restarting;
 	bool			charge_full;
+	bool			reporting_charge_full;	
 	bool			recharge_soc_adjusted;
 	bool			ki_coeff_dischg_en;
 	bool			esr_fcc_ctrl_en;
 	bool			soc_reporting_ready;
 	bool			esr_flt_cold_temp_en;
-	bool			bsoc_delta_irq_en;
 	bool			slope_limit_en;
 	bool			use_ima_single_mode;
 	struct completion	soc_update;
@@ -458,6 +473,7 @@ extern void dump_sram(u8 *buf, int addr, int len);
 extern int64_t twos_compliment_extend(int64_t val, int s_bit_pos);
 extern s64 fg_float_decode(u16 val);
 extern bool is_input_present(struct fg_chip *chip);
+extern bool is_qnovo_en(struct fg_chip *chip);
 extern void fg_circ_buf_add(struct fg_circ_buf *, int);
 extern void fg_circ_buf_clr(struct fg_circ_buf *);
 extern int fg_circ_buf_avg(struct fg_circ_buf *, int *);

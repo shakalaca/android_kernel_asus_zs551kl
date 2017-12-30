@@ -4,9 +4,9 @@ qcom,2870788_asus_c11p1701_3400mah_averaged_masterslave_apr18th2017_4p25v {
 	/* #2870788_Asus_C11P1701_3400mAh_averaged_MasterSlave_Apr18th2017*/
 	qcom,max-voltage-uv = <4297000>;
 	qcom,nom-batt-capacity-mah = <3400>;
-	qcom,fg-cc-cv-threshold-mv = <4287>;
+	qcom,fg-cc-cv-threshold-mv = <4270>;
       	qcom,fastchg-current-ma = <3400>;
-	qcom,batt-id-kohm = <51>;
+	qcom,batt-id-kohm = <100 51>;
 	qcom,battery-beta = <3435>;
 	qcom,battery-type = "c11p1701_3400mah_apr18th2017_4p25v";
 	qcom,checksum = <0xE6F0>;

@@ -1630,8 +1630,39 @@ out:
 
 static DEVICE_ATTR(state, S_IRUGO, state_show, NULL);
 
+static ssize_t fsio_state_show(struct device *pdev, struct device_attribute *attr,
+			char *buf)
+{
+	struct gadget_info *dev = dev_get_drvdata(pdev);
+	struct usb_composite_dev *cdev;
+	char *state = "OK";
+	unsigned long flags;
+
+	if (!dev)
+		goto out;
+
+	cdev = &dev->cdev;
+
+	if (!cdev)
+		goto out;
+
+	spin_lock_irqsave(&cdev->lock, flags);
+	if (cdev->io_error)
+		state = "ERROR";
+	else
+		state = "OK";
+
+	cdev->io_error = false;
+	spin_unlock_irqrestore(&cdev->lock, flags);
+out:
+	return sprintf(buf, "%s\n", state);
+}
+
+static DEVICE_ATTR(fsio_state, S_IRUGO, fsio_state_show, NULL);
+
 static struct device_attribute *android_usb_attributes[] = {
 	&dev_attr_state,
+	&dev_attr_fsio_state,
 	NULL
 };
 

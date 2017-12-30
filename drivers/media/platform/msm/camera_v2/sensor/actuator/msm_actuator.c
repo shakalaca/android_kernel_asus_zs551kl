@@ -166,15 +166,25 @@ static int rear_vcm_2_read(struct seq_file *buf, void *v)
 {
 	int ret;
 	uint16_t reg_val = 0xEEEE; //ASUS_BSP ZZ++
-	
+
+if (rear_vcm2_ctrl_t) {	
+	mutex_lock(rear_vcm2_ctrl_t->actuator_mutex);
 	ret =  rear_vcm2_ctrl_t->i2c_client.i2c_func_tbl->i2c_read(
 			&rear_vcm2_ctrl_t->i2c_client,
 			rear_vcm_value_2,
 			&reg_val,
 			MSM_CAMERA_I2C_BYTE_DATA);
+} else {
+	pr_err("Randy vcm 2 read , Error: rear_vcm2_ctrl_t is null, not initialize !!!\n");
+	return -EFAULT;
+}
 
+if (buf) {
 	seq_printf(buf,"Camera 2 reg 0x%04x val 0x%x\n",rear_vcm_value_2,reg_val);
-
+} else {
+	pr_err("Randy vcm 2 read , Error: buf is null !!!\n");
+}
+	mutex_unlock(rear_vcm2_ctrl_t->actuator_mutex);
 	return ret;
 }
 
@@ -192,6 +202,12 @@ static ssize_t rear_vcm_2_write(struct file *filp, const char __user *buff, size
 	int rc;
 	uint32_t g_camera_reg_val;
 	static uint8_t g_camera_sensor_operation;
+	if (rear_vcm2_ctrl_t) {
+		mutex_lock(rear_vcm2_ctrl_t->actuator_mutex);
+	} else {
+		pr_err("Randy vcm 2 write , Error: rear_vcm2_ctrl_t is null, not initialize !!!\n");
+		return -EFAULT;
+	}
 	
 	ret_len = len;
 	if (len > 32) {
@@ -199,6 +215,7 @@ static ssize_t rear_vcm_2_write(struct file *filp, const char __user *buff, size
 	}
 	if (copy_from_user(messages, buff, len)) {
 		pr_err("%s command fail !!\n", __func__);
+		mutex_unlock(rear_vcm2_ctrl_t->actuator_mutex);
 		return -EFAULT;
 	}
 
@@ -243,6 +260,7 @@ static ssize_t rear_vcm_2_write(struct file *filp, const char __user *buff, size
 		}
 	}
 RETURN:
+	mutex_unlock(rear_vcm2_ctrl_t->actuator_mutex);
 	return ret_len;
 }
 

@@ -764,6 +764,7 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	return 0;
 
 err:
+	list_del(&req_complete->list_item);
 	spin_unlock_irqrestore(&dwc->lock, flags);
 	kfree(req_complete);
 	return ret;
@@ -2308,9 +2309,11 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 	if (mdwc->id_state == DWC3_ID_FLOAT) {
 		dev_dbg(mdwc->dev, "XCVR: ID set\n");
 		set_bit(ID, &mdwc->inputs);
+		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 	} else {
 		dev_dbg(mdwc->dev, "XCVR: ID clear\n");
 		clear_bit(ID, &mdwc->inputs);
+		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 	}
 
 	if (mdwc->vbus_active && !mdwc->in_restart) {
@@ -3331,16 +3334,19 @@ static void msm_dwc3_perf_vote_work(struct work_struct *w)
 	struct dwc3_msm *mdwc = container_of(w, struct dwc3_msm,
 						perf_vote_work.work);
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
-	static unsigned long	last_irq_cnt;
 	bool in_perf_mode = false;
+	int latency = mdwc->pm_qos_latency;
 
-	if (dwc->irq_cnt - last_irq_cnt >= PM_QOS_THRESHOLD)
+	if (!latency)
+		return;
+
+	if (dwc->irq_cnt - dwc->last_irq_cnt >= PM_QOS_THRESHOLD)
 		in_perf_mode = true;
 
 	pr_debug("%s: in_perf_mode:%u, interrupts in last sample:%lu\n",
-		 __func__, in_perf_mode, (dwc->irq_cnt - last_irq_cnt));
+		 __func__, in_perf_mode, (dwc->irq_cnt - dwc->last_irq_cnt));
 
-	last_irq_cnt = dwc->irq_cnt;
+	dwc->last_irq_cnt = dwc->irq_cnt;
 	msm_dwc3_perf_vote_update(mdwc, in_perf_mode);
 	schedule_delayed_work(&mdwc->perf_vote_work,
 			msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
@@ -3361,8 +3367,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	int ret = 0;
 
-	if (!dwc->xhci)
+	if (!dwc->xhci) {
+		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 		return -EINVAL;
+	}
 
 	/*
 	 * The vbus_reg pointer could have multiple values
@@ -3377,6 +3385,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 				PTR_ERR(mdwc->vbus_reg) == -EPROBE_DEFER) {
 			/* regulators may not be ready, so retry again later */
 			mdwc->vbus_reg = NULL;
+			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 			return -EPROBE_DEFER;
 		}
 	}
@@ -3607,7 +3616,8 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned mA)
 		}
 	}
 
-	power_supply_get_property(mdwc->usb_psy, POWER_SUPPLY_PROP_TYPE, &pval);
+	power_supply_get_property(mdwc->usb_psy,
+			POWER_SUPPLY_PROP_REAL_TYPE, &pval);
 	if (pval.intval != POWER_SUPPLY_TYPE_USB)
 		return 0;
 

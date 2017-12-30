@@ -893,9 +893,21 @@ static int g_bEventlogEnable = 1;
 static char g_Asus_Eventlog[ASUS_EVTLOG_MAX_ITEM][ASUS_EVTLOG_STR_MAXLEN];
 static int g_Asus_Eventlog_read = 0;
 static int g_Asus_Eventlog_write = 0;
+//[+++]Record the important power event
+static struct workqueue_struct *ASUSErclog_workQueue;
+static int g_hfileErclog = -MAX_ERRNO;
+static char g_Asus_Erclog[ASUS_ERCLOG_MAX_ITEM][ASUS_ERCLOG_STR_MAXLEN];
+static char g_Asus_Erclog_filelist[ASUS_ERCLOG_MAX_ITEM][ASUS_ERCLOG_FILENAME_MAXLEN];
+static int g_Asus_Erclog_read = 0;
+static int g_Asus_Erclog_write = 0;
+//[---]Record the important power event
 
 static void do_write_event_worker(struct work_struct *work);
 static DECLARE_WORK(eventLog_Work, do_write_event_worker);
+//[+++]Record the important power event
+static void do_write_erc_worker(struct work_struct *work);
+static DECLARE_WORK(ercLog_Work, do_write_erc_worker);
+//[---]Record the important power event
 
 /*ASUS-BBSP SubSys Health Record+++*/
 static char g_SubSys_W_Buf[SUBSYS_W_MAXLEN];
@@ -910,6 +922,7 @@ static struct completion SubSys_C_Complete;
 /*ASUS-BBSP SubSys Health Record---*/
 
 static struct mutex mA;
+static struct mutex mA_erc;//Record the important power event
 #define AID_SDCARD_RW 1015
 static void do_write_event_worker(struct work_struct *work)
 {
@@ -924,7 +937,7 @@ static void do_write_event_worker(struct work_struct *work)
 		sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
 
 		size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
-		if (size >= SZ_2M) {
+		if (size >= SZ_8M) {
 			sys_close(g_hfileEvtlog);
 			sys_rmdir(ASUS_EVTLOG_PATH "_old.txt");
 			sys_rename(ASUS_EVTLOG_PATH ".txt", ASUS_EVTLOG_PATH "_old.txt");
@@ -962,7 +975,7 @@ static void do_write_event_worker(struct work_struct *work)
 		sys_chown(ASUS_EVTLOG_PATH ".txt", AID_SDCARD_RW, AID_SDCARD_RW);
 
 		size = sys_lseek(g_hfileEvtlog, 0, SEEK_END);
-		if (size >= SZ_2M) {
+		if (size >= SZ_8M) {
 			sys_close(g_hfileEvtlog);
 			sys_rmdir(ASUS_EVTLOG_PATH "_old.txt");
 			sys_rename(ASUS_EVTLOG_PATH ".txt", ASUS_EVTLOG_PATH "_old.txt");
@@ -1030,6 +1043,114 @@ void ASUSEvtlog(const char *fmt, ...)
 	}
 }
 EXPORT_SYMBOL(ASUSEvtlog);
+
+//[+++]Record the important power event
+static void do_write_erc_worker(struct work_struct *work)
+{
+    int str_len;
+    char log_body[ASUS_ERCLOG_STR_MAXLEN];
+    char filepath[ASUS_ERCLOG_FILENAME_MAXLEN];
+    char filepath_old[ASUS_ERCLOG_FILENAME_MAXLEN];
+    long size;
+    int flag_read = -1;
+    int flag_write = -1;
+
+    while (g_Asus_Erclog_read != g_Asus_Erclog_write) {
+        memset(log_body, 0, ASUS_ERCLOG_STR_MAXLEN);
+        memset(filepath, 0, sizeof(char)*ASUS_ERCLOG_FILENAME_MAXLEN);
+        memset(filepath_old, 0, sizeof(char)*ASUS_ERCLOG_FILENAME_MAXLEN);
+
+        mutex_lock(&mA_erc);
+        flag_read = g_Asus_Erclog_read;
+        flag_write = g_Asus_Erclog_write;
+
+        memcpy(log_body, g_Asus_Erclog[g_Asus_Erclog_read], ASUS_ERCLOG_STR_MAXLEN);
+        snprintf(filepath, ASUS_ERCLOG_FILENAME_MAXLEN, "%s%s.txt", ASUS_ASDF_BASE_DIR, g_Asus_Erclog_filelist[g_Asus_Erclog_read]);
+        snprintf(filepath_old, ASUS_ERCLOG_FILENAME_MAXLEN, "%s%s_old.txt", ASUS_ASDF_BASE_DIR, g_Asus_Erclog_filelist[g_Asus_Erclog_read]);
+        memset(g_Asus_Erclog[g_Asus_Erclog_read], 0, ASUS_ERCLOG_STR_MAXLEN);
+        memset(g_Asus_Erclog_filelist[g_Asus_Erclog_read], 0, ASUS_ERCLOG_FILENAME_MAXLEN);
+
+        g_Asus_Erclog_read++;
+        g_Asus_Erclog_read %= ASUS_ERCLOG_MAX_ITEM;
+        mutex_unlock(&mA_erc);
+
+        str_len = strlen(log_body);
+		if(str_len == 0) continue;
+        if (str_len > 0 && log_body[str_len - 1] != '\n' ) {
+            if(str_len + 1 >= ASUS_ERCLOG_STR_MAXLEN)
+                str_len = ASUS_ERCLOG_STR_MAXLEN - 2;
+            log_body[str_len] = '\n';
+            log_body[str_len + 1] = '\0';
+        }
+
+        pr_debug("flag_read = %d, flag_write = %d, filepath = %s\n", flag_read, flag_write, filepath);
+        g_hfileErclog = sys_open(filepath, O_CREAT|O_RDWR|O_SYNC, 0444);
+        sys_chown(filepath, AID_SDCARD_RW, AID_SDCARD_RW);
+
+        if (!IS_ERR((const void *)(ulong)g_hfileEvtlog)) {
+            size = sys_lseek(g_hfileErclog, 0, SEEK_END);
+            if (size >= 5000) {    //limit 5KB each file
+                sys_close(g_hfileErclog);
+                sys_rmdir(filepath_old);
+                sys_rename(filepath, filepath_old);
+                g_hfileErclog = sys_open(filepath, O_CREAT|O_RDWR|O_SYNC, 0444);
+            }
+
+            sys_write(g_hfileErclog, log_body, strlen(log_body));
+            sys_fsync(g_hfileErclog);
+            sys_close(g_hfileErclog);
+
+        }else{
+            pr_err("sys_open %s IS_ERR error code: %d]\n", filepath, g_hfileEvtlog);
+        }
+    }
+}
+
+void ASUSErclog(const char * filename, const char *fmt, ...)
+{
+    va_list args;
+    char *buffer;
+    char *tofile;
+    int flag_write = -1;
+
+//    if (!in_interrupt() && !in_atomic() && !irqs_disabled())
+        mutex_lock(&mA_erc);
+
+    flag_write = g_Asus_Erclog_write;
+    buffer = g_Asus_Erclog[g_Asus_Erclog_write];
+    tofile = g_Asus_Erclog_filelist[g_Asus_Erclog_write];
+    memset(buffer, 0, ASUS_EVTLOG_STR_MAXLEN);
+    memset(tofile, 0, ASUS_ERCLOG_FILENAME_MAXLEN);
+    g_Asus_Erclog_write++;
+    g_Asus_Erclog_write %= ASUS_EVTLOG_MAX_ITEM;
+
+//    if (!in_interrupt() && !in_atomic() && !irqs_disabled())
+        mutex_unlock(&mA_erc);
+
+    if (buffer) {
+        struct rtc_time tm;
+        struct timespec ts;
+
+        getnstimeofday(&ts);
+        ts.tv_sec -= sys_tz.tz_minuteswest * 60;
+        rtc_time_to_tm(ts.tv_sec, &tm);
+        getrawmonotonic(&ts);
+        sprintf(buffer, "%04d%02d%02d%02d%02d%02d :", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+        va_start(args, fmt);
+        vscnprintf(buffer + strlen(buffer), ASUS_ERCLOG_STR_MAXLEN - strlen(buffer), fmt, args);
+        va_end(args);
+		printk("%s", buffer);
+        sprintf(tofile, "%s", filename);
+        pr_debug("flag_write= %d, tofile = %s\n", flag_write, tofile);
+        queue_work(ASUSErclog_workQueue, &ercLog_Work);
+    } else {
+        pr_err("[ASDF]ASUSErclog buffer cannot be allocated\n");
+    }
+}
+EXPORT_SYMBOL(ASUSErclog);
+//[---]Record the important power event
+
 
 /*ASUS-BBSP SubSys Health Record+++*/
 static void do_write_subsys_worker(struct work_struct *work)
@@ -1518,6 +1639,7 @@ static int __init proc_asusdebug_init(void)
 	proc_create("last_logcat", S_IWUGO, NULL, &last_logcat_proc_ops); /* ASUS_BSP Paul +++ */
 	PRINTK_BUFFER_VA = ioremap(PRINTK_BUFFER_PA, PRINTK_BUFFER_SIZE);
 	mutex_init(&mA);
+	mutex_init(&mA_erc);//Record the important power event
 	fake_mutex.owner = current;
 	fake_mutex.mutex_owner_asusdebug = current;
 	fake_mutex.name = " fake_mutex";
@@ -1530,6 +1652,7 @@ static int __init proc_asusdebug_init(void)
 	/*ASUS-BBSP SubSys Health Record---*/
 
 	ASUSEvtlog_workQueue = create_singlethread_workqueue("ASUSEVTLOG_WORKQUEUE");
+	ASUSErclog_workQueue  = create_singlethread_workqueue("ASUSERCLOG_WORKQUEUE");//Record the important power event
 	
 	INIT_WORK(&slow_work, trigger_slowlog_work);
 	

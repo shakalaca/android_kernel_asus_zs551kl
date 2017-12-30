@@ -594,7 +594,6 @@ static bool rgbSensor_checkI2C(void)
 }
 static int rgbSensor_itSet_ms(int input_ms)
 {
-	static uint16_t l_count = 0;
 	int it_time;
 	int ret = 0;
 	if (input_ms < 80) {
@@ -610,11 +609,9 @@ static int rgbSensor_itSet_ms(int input_ms)
 	} else{
 		it_time = 5;
 	}
-	if (l_count % IT_TIME_LOG_SAMPLE_RATE == 0) {
-		RGB_DBG("%s: it time = %d, it set = %d, log rate = %d\n", __func__, input_ms, it_time, IT_TIME_LOG_SAMPLE_RATE);
-		l_count = 0;
-	}
-	l_count++;
+
+	RGB_DBG("%s: it time %d => %d, it set = %d, log rate = %d\n", __func__, cm_lp_info->it_time, input_ms, it_time, IT_TIME_LOG_SAMPLE_RATE);
+
 	cm_lp_info->it_time = it_time;
 	if (cm_lp_info->als_enable == 1) {
 		do_gettimeofday(&it_set_begin);
@@ -1240,7 +1237,6 @@ static void create_rgbSensor_w_proc_file(void)
 #endif
 /*---BSP David ASUS Interface---*/
 
-
 static int rgbSensor_miscOpen(struct inode *inode, struct file *file)
 {
 	int ret = 0;
@@ -1267,6 +1263,8 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 	char dataS[ASUS_RGB_SENSOR_NAME_SIZE];
  	uint16_t adc_data;
 	int l_debug_mode = 0;
+	static int log_filter = 0;
+	
 	switch (cmd) {
 		case ASUS_RGB_SENSOR_IOCTL_IT_SET:
 			if (cm_lp_info->als_enable != 1) {
@@ -1308,11 +1306,12 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 			}
 			dataI[3] = adc_data;
 			dataI[4] = 1;
-
+	
 			if(g_rgb_status.wait_after_setit) {
 				do_gettimeofday(&it_set_now);
 
 				if(!is_it_time_passed(it_set_begin, it_set_now)) {
+					RGB_DBG("%s: Integration time is not ready yet, get old RGBW data\n", __func__);
 					dataI[0] = cm_lp_info->dataR;
 					dataI[1] = cm_lp_info->dataG;
 					dataI[2] = cm_lp_info->dataB;
@@ -1329,10 +1328,14 @@ static long rgbSensor_miscIoctl(struct file *file, unsigned int cmd, unsigned lo
 				cm_lp_info->dataG = dataI[1];
 				cm_lp_info->dataB = dataI[2];
 				cm_lp_info->dataW = dataI[3];
-			}
+			}			
 
-			RGB_DBG_API("%s: cmd = DATA_READ, data[0] = %d, data[1] = %d, data[2] = %d, data[3] = %d, data[4] = %d\n"
-				, __func__, dataI[0], dataI[1], dataI[2], dataI[3], dataI[4]);
+			log_filter++;
+			if(log_filter % 30 == 1 || g_debugMode) {
+				RGB_DBG("%s: cmd = DATA_READ, data[0] = %d, data[1] = %d, data[2] = %d, data[3] = %d, data[4] = %d\n"
+					, __func__, dataI[0], dataI[1], dataI[2], dataI[3], dataI[4]);
+				log_filter = 1;
+			}
 			ret = copy_to_user((int __user*)arg, &dataI, sizeof(dataI));
 			break;
 		case ASUS_RGB_SENSOR_IOCTL_MODULE_NAME:
@@ -1442,11 +1445,13 @@ static int cm3323e_regulator_init(struct cm3323e_info *dev_t)
 		return -1;
 	}
 	
+	/*
 	ret = regulator_set_load(dev_t->reg, CM3323E_SUPPLY_CURRENT);
 	if (ret < 0) {
 		dev_err(&dev_t->i2c_client->dev, "Failed to set load for vincentr reg %d\n", ret);
 		return ret;
 	}
+	*/
 
 /* Remove regulator enable/disable, it is always-on now */
 #if 0

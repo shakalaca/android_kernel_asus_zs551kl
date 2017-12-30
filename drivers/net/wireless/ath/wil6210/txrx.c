@@ -1933,7 +1933,7 @@ static inline void __wil_update_net_queues(struct wil6210_priv *wil,
 	/* Do not wake the queues in suspend flow */
 	if (test_bit(wil_status_suspending, wil->status) ||
 		test_bit(wil_status_suspended, wil->status))
-			return;
+		return;
 
 	/* check wake */
 	for (i = 0; i < WIL6210_MAX_TX_RINGS; i++) {

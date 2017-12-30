@@ -175,6 +175,12 @@ u8 g_int_time = 0;
 /* +++ asus jacob add for check proximity status +++ */
 bool EnableProximityCheck = true;
 /* --- asus jacob add for check proximity status --- */
+#if SUPPORTTIMER
+/* --- asus jacob add for test --- */
+static void init_Touch_Timer(struct ftxxxx_ts_data *data);
+static void del_Touch_Timer(struct ftxxxx_ts_data *data);
+/* --- asus jacob add for test --- */
+#endif
 
 #ifdef FTS_PM
 void ftxxxx_ts_suspend(void);
@@ -205,6 +211,12 @@ static int IICErrorCountor = 0;
 extern bool proximity_check_status(void);
 extern int get_audiomode(void);
 extern bool g_FP_Disable_Touch;
+
+
+
+
+
+
 /*
 *ftxxxx_i2c_Read-read data and write data by i2c
 *@client: handle of i2c
@@ -693,13 +705,15 @@ static int ftxxxx_read_Touchdata(struct ftxxxx_ts_data *data)
 	int i = 0;
 	u8 pointid = FT_MAX_ID;
 
+	focal_debug(DEBUG_VERBOSE, "[Focal][debug] read touch data start ! \n");
+
 	ret = ftxxxx_i2c_Read(data->client, buf, 1, buf, POINT_READ_BUF);
 	if (ret < 0) {
 		dev_err(&data->client->dev, "[Focal][TOUCH_ERR] %s : read touchdata failed.\n", __func__);
 		return ret;
 	}
 
-	focal_debug(DEBUG_VERBOSE, "[Focal][debug] read touch data ! \n");
+	focal_debug(DEBUG_VERBOSE, "[Focal][debug] read touch data end ! \n");
 
 	memset(event, 0, sizeof(struct ts_event));
 
@@ -707,7 +721,7 @@ static int ftxxxx_read_Touchdata(struct ftxxxx_ts_data *data)
 	for (i = 0; i < CFG_MAX_TOUCH_POINTS; i++) {
 		pointid = (buf[FT_TOUCH_ID_POS + FT_TOUCH_STEP * i]) >> 4;
 		if (pointid >= FT_MAX_ID) {
-			focal_debug(DEBUG_VERBOSE, "[Focal][debug] pointid = %d ! \n", pointid);
+			focal_debug(DEBUG_VERBOSE, "[Focal][debug] irate time = %d pointid = %d ! \n", i, pointid);
 			break;
 		}
 		else
@@ -938,6 +952,9 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 		/* --- asus jacob add for print touch location --- */
 		input_report_key(data->input_dev, BTN_TOUCH, 0);
 		printk("[Focal][Touch] touch up !\n");
+#if SUPPORTTIMER
+		del_Touch_Timer(ftxxxx_ts);
+#endif
 	} else {
 		input_report_key(data->input_dev, BTN_TOUCH, event->touch_point > 0);
 		if (touch_down_up_status == 0) {
@@ -946,6 +963,9 @@ static void ftxxxx_report_value(struct ftxxxx_ts_data *data)
 			printk("[Focal][Touch] id=%d event=%d x=%d y=%d pressure=%d area=%d\n", event->au8_finger_id[0],
 			event->au8_touch_event[0], event->au16_x[0], event->au16_y[0], event->pressure[0], event->area[0]);
 		}
+#if SUPPORTTIMER
+		init_Touch_Timer(ftxxxx_ts);
+#endif
 	}
 	input_sync(data->input_dev);
 }
@@ -957,10 +977,17 @@ static irqreturn_t ftxxxx_ts_interrupt(int irq, void *dev_id)
 {
 /*	struct ftxxxx_ts_data *ftxxxx_ts = dev_id; ASUS jacob use globle ftxxxx_ts data*/
 	int ret = 0;
+	bool get_wakelock = false;
 #ifdef FTS_GESTRUE/*zax 20140922*/
 	u8 state;
 #endif
-	wake_lock(&ftxxxx_ts->wake_lock);
+
+	focal_debug(DEBUG_VERBOSE, "[Focal][Touch][JK] %s : start  ! \n", __func__);
+	
+	if (ftxxxx_ts->irq_wakeup_eable) {
+		wake_lock(&ftxxxx_ts->wake_lock);
+		get_wakelock = true;
+	}
 
 	mutex_lock(&ftxxxx_ts->g_device_mutex);
 
@@ -992,7 +1019,10 @@ static irqreturn_t ftxxxx_ts_interrupt(int irq, void *dev_id)
 
 	mutex_unlock(&ftxxxx_ts->g_device_mutex);
 
-	wake_unlock(&ftxxxx_ts->wake_lock);
+	if (get_wakelock)
+		wake_unlock(&ftxxxx_ts->wake_lock);
+
+	focal_debug(DEBUG_VERBOSE, "[Focal][Touch][JK] %s : end  ! \n", __func__);
 
 	return IRQ_HANDLED;
 }
@@ -1417,6 +1447,154 @@ void focal_glove_switch(bool plugin)
 	return;
 
 }
+
+/* --- asus jacob add for test --- */
+#if SUPPORTTIMER
+
+static void focal_clean_touch_work(struct work_struct *work)
+{
+
+	struct ftxxxx_ts_data *ts = ftxxxx_ts;
+	int finger_count = 0;
+	int ret = 0;
+	int i = 0;
+
+    if (ts->irq_lock_status | suspend_resume_process | disable_tp_flag)
+        return;
+    //// need muetx
+    mutex_lock(&ts->g_device_mutex);
+	ret = ftxxxx_read_Touchdata(ts);
+    mutex_unlock(&ts->g_device_mutex);
+
+    if (!ret) {
+        focal_debug(DEBUG_VERBOSE, "[Focal][debug] check touch event status ! \n");
+		for (i = 0; i < ts->event.touch_point; i++) {
+			if (ts->event.au8_touch_event[i]== 0 || ts->event.au8_touch_event[i] == 2)
+				return;
+		}
+    }
+
+    if (ts->irq_lock_status | suspend_resume_process | disable_tp_flag)
+        return;
+
+	printk("[Focal][touch] %s : do clean touch ! \n", __func__);
+
+	 for (finger_count = 0; finger_count < 10; finger_count++) {
+        input_mt_slot(ts->input_dev, finger_count);
+        input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
+    }
+	input_report_key(ts->input_dev, BTN_TOUCH, 0);
+
+	if (key_record) {
+		if (key_record & 0x1) {
+			input_report_key(ts->input_dev, KEY_BACK, 0);
+		}
+		if (key_record & 0x2) {
+			input_report_key(ts->input_dev, KEY_HOME, 0);
+		}
+		if (key_record & 0x4) {
+			input_report_key(ts->input_dev, KEY_MENU, 0);
+		}
+	}
+	key_record = 0;
+	touch_down_up_status = 0;
+	input_sync(ts->input_dev);
+
+	return;
+}
+
+static void clean_touch(unsigned long ptr) {
+
+	struct ftxxxx_ts_data *ts = ftxxxx_ts;
+
+
+    focal_debug(DEBUG_VERBOSE, "[Focal][debug] %s ! \n", __func__);
+
+    if (ts->irq_lock_status)
+        return;
+
+    queue_work(ts->clean_touch_wq, &ts->clean_touch_work);
+
+// move to work Q
+#if 0
+    mutex_lock(&ts->g_device_mutex);
+	ret = ftxxxx_read_Touchdata(ts);
+    mutex_unlock(&ts->g_device_mutex);
+
+    if (!ret) {
+        focal_debug(DEBUG_VERBOSE, "[Focal][debug] check touch event status ! \n");
+		for (i = 0; i < ts->event.touch_point; i++) {
+			if (ts->event.au8_touch_event[i]== 0 || ts->event.au8_touch_event[i] == 2)
+				return;
+		}
+    }
+
+    if (ts->irq_lock_status)
+        return;
+
+	printk("[Focal][touch] %s : do clean touch ! \n", __func__);
+
+	 for (finger_count = 0; finger_count < 10; finger_count++) {
+        input_mt_slot(ts->input_dev, finger_count);
+        input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
+    }
+	input_report_key(ts->input_dev, BTN_TOUCH, 0);
+	//input_mt_sync(ftxxxx_ts->input_dev);
+	if (key_record) {
+		if (key_record & 0x1) {
+			input_report_key(ts->input_dev, KEY_BACK, 0);
+		}
+		if (key_record & 0x2) {
+			input_report_key(ts->input_dev, KEY_HOME, 0);
+		}
+		if (key_record & 0x4) {
+			input_report_key(ts->input_dev, KEY_MENU, 0);
+		}
+	}
+	key_record = 0;
+	touch_down_up_status = 0;
+	input_sync(ts->input_dev);
+#endif
+	return;
+}
+
+static void init_Touch_Timer(struct ftxxxx_ts_data *data)
+{
+	unsigned long expires;
+
+	if (!data->Touch_Timer_expires) {
+		init_timer(&data->Touch_Timer);
+		data->Touch_Timer.function = clean_touch;
+		data->Touch_Timer.expires = jiffies + msecs_to_jiffies(30);
+		add_timer(&data->Touch_Timer);
+		data->Touch_Timer_expires = data->Touch_Timer.expires;
+	} else {
+		expires = jiffies + msecs_to_jiffies(30);
+		if (!expires)
+			expires = 1;
+
+		if (!data->Touch_Timer_expires || time_after(expires, data->Touch_Timer_expires)) {
+			mod_timer(&data->Touch_Timer, expires);
+			data->Touch_Timer_expires = expires;
+		}
+	}
+
+	return;
+}
+
+static void del_Touch_Timer(struct ftxxxx_ts_data *data)
+{
+    if (data->Touch_Timer_expires) {
+		del_timer(&data->Touch_Timer);
+		data->Touch_Timer_expires = 0;
+    }
+
+	return;
+}
+#endif
+/* --- asus jacob add for test --- */
+
+
 
 static void focal_reset_ic_work(struct work_struct *work)
 {
@@ -2290,6 +2468,9 @@ static int ftxxxx_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	ftxxxx_ts->pdata = pdata;
 	ftxxxx_ts->x_max = pdata->abs_x_max;
 	ftxxxx_ts->y_max = pdata->abs_y_max;
+#if SUPPORTTIMER
+	ftxxxx_ts->Touch_Timer_expires = 0;
+#endif
 	if (0 >= ftxxxx_ts->x_max)
 		ftxxxx_ts->x_max = TOUCH_MAX_X;
 	if (0 >= ftxxxx_ts->y_max)
@@ -2442,7 +2623,15 @@ static int ftxxxx_ts_probe(struct i2c_client *client, const struct i2c_device_id
 		printk("[Focal][TOUCH_ERR] %s: create init_check_ic workqueue failed\n", __func__);
 		goto err_create_wq_failed;
 	}
-	
+#if SUPPORTTIMER
+	ftxxxx_ts->clean_touch_wq = create_singlethread_workqueue("focal_clean_touch_wq");
+	if (!ftxxxx_ts->clean_touch_wq) {
+		printk("[Focal][TOUCH_ERR] %s: create clean_touch_wq workqueue failed\n", __func__);
+		goto err_create_wq_failed;
+	}
+
+	INIT_WORK(&ftxxxx_ts->clean_touch_work, focal_clean_touch_work);
+#endif
 	INIT_DELAYED_WORK(&ftxxxx_ts->init_check_ic_work, focal_init_check_ic_work);
 
 	INIT_DELAYED_WORK(&ftxxxx_ts->glove_mode_switch_work, focal_glove_mode_switch_work);
@@ -2636,6 +2825,11 @@ exit_request_reset:
 #endif
 
 err_create_wq_failed:
+#if SUPPORTTIMER
+	if (ftxxxx_ts->clean_touch_wq) {
+		destroy_workqueue(ftxxxx_ts->init_check_ic_wq);
+	}
+#endif
 	if (ftxxxx_ts->init_check_ic_wq) {
 		destroy_workqueue(ftxxxx_ts->init_check_ic_wq);
 	}

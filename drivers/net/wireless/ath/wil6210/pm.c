@@ -191,6 +191,7 @@ static int wil_suspend_keep_radio_on(struct wil6210_priv *wil)
 			goto resume_after_fail;
 		}
 	}
+
 	/* Save the current bus request to return to the same in resume */
 	wil->bus_request_kbps_pre_suspend = wil->bus_request_kbps;
 	wil6210_bus_request(wil, 0);

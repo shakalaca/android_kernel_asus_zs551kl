@@ -611,8 +611,8 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 			mbhc->buttons_pressed &=
 				~WCD_MBHC_JACK_BUTTON_MASK;
 		}
-		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
-			mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
+		//if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+		//	mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
 		if (mbhc->micbias_enable) {
 			if (mbhc->mbhc_cb->mbhc_micbias_control)
 			{
@@ -651,8 +651,8 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		    (mbhc->current_plug == MBHC_PLUG_TYPE_HIGH_HPH ||
 		    jack_type == SND_JACK_LINEOUT) &&
 		    (mbhc->hph_status && mbhc->hph_status != jack_type)) {
-			if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
-				mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
+			//if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
+			//	mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
 			if (mbhc->micbias_enable) {
 				if (mbhc->mbhc_cb->mbhc_micbias_control)
 				{	
@@ -1434,8 +1434,11 @@ exit:
 	    mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
 						    MICB_DISABLE);
 	    if (plug_type == MBHC_PLUG_TYPE_HEADSET)
+            {
 		mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
-						    MICB_PULLUP_ENABLE);
+						    MICB_ENABLE);
+                mbhc->micbias_enable = true;
+            }
 	}
 	/*
 	 * If plug type is corrected from special headset to headphone,

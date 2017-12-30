@@ -206,7 +206,8 @@ enum HPTG_config_enum {
 };
 
 /* Current consumption */
-#define LASER_STANDBY_CURRENT  15			//UA
+//#define LASER_STANDBY_CURRENT  15			//UA
+//#define LASER_STANDBY_CURRENT  200			//UA   use cm3323e RGB supply current
 #define LASER_MEASURE_CURRENT  20000		//UA
 
 /* Calibration parameter */

@@ -48,7 +48,7 @@ struct gf_key_map
 
 #define GF_FASYNC   1	/*If support fasync mechanism.*/
 
-#define GF_EARLY_WAKE   1	/*If support early wake up mechanism.*/
+#define GF_EARLY_WAKE   0	/*If support early wake up mechanism.*/
 
 #define GF_NETLINK_ENABLE 1
 #define GF_NET_EVENT_IRQ 0

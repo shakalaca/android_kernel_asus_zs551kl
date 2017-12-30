@@ -98,6 +98,7 @@
 
 #define TP_5446 0xFF
 
+#define SUPPORTTIMER   1
 
 
 /*---- nancy add 20150923-----*/
@@ -207,7 +208,15 @@ struct ftxxxx_ts_data {
 	struct delayed_work init_check_ic_work;
 	struct delayed_work glove_mode_switch_work;
 	struct delayed_work cover_mode_switch_work;
-	
+#if SUPPORTTIMER
+	/* Jacob add for test */
+	struct workqueue_struct *clean_touch_wq;
+	struct work_struct clean_touch_work;
+
+	unsigned long Touch_Timer_expires;
+    struct timer_list Touch_Timer;
+	/* Jacob add for test */
+#endif
 	/* Wakelock Protect */
 	struct wake_lock wake_lock;
 	/* Wakelock Protect */

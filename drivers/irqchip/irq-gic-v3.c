@@ -291,6 +291,9 @@ static int gic_irq_get_irqchip_state(struct irq_data *d,
 }
 static void gic_disable_irq(struct irq_data *d)
 {
+	/* don't lazy-disable PPIs */
+	if (gic_irq(d) < 32)
+		gic_mask_irq(d);
 	if (gic_arch_extn.irq_disable)
 		gic_arch_extn.irq_disable(d);
 }
@@ -472,8 +475,8 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 		else if (desc->action && desc->action->name)
 			name = desc->action->name;
 
-		printk("[PM] %s: %d triggered %s\n", __func__, i, name);	/*print GIC_V3 irq number*/
-		log_wakeup_reason(i);
+		printk("[PM] %s: IRQ = %d, i = %d  triggered %s\n", __func__, irq, i, name);	/*print GIC_V3 irq number, i = hwirq, irq = linuxirq*/
+		log_wakeup_reason(irq);
 //[+++][PM]save IRQ's counts and number
 		if (gic_irq_cnt < 8)
 			gic_resume_irq[gic_irq_cnt]=i;

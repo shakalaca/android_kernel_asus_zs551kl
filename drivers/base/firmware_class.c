@@ -272,6 +272,9 @@ static void __fw_free_buf(struct kref *ref)
 		 (unsigned int)buf->size);
 
 	list_del(&buf->list);
+#ifdef CONFIG_FW_LOADER_USER_HELPER
+	list_del(&buf->pending_list);
+#endif
 	spin_unlock(&fwc->lock);
 
 #ifdef CONFIG_FW_LOADER_USER_HELPER
@@ -292,6 +295,7 @@ static void fw_free_buf(struct firmware_buf *buf)
 {
 	struct firmware_cache *fwc = buf->fwc;
 	if (!fwc) {
+		kfree_const(buf->fw_id);
 		kfree(buf);
 		return;
 	}
@@ -416,6 +420,13 @@ static int fw_get_filesystem_firmware(struct device *device,
                       dev_err(device, "[Venus] Try to load firmware : %s \n", path);
               }
               /* ASUS BSP ---*/
+
+		/* ASUS BSP : For Change cpe FW loading path to system/etc/firmware */
+		if (!strcmp(fw_name, "cpe")  && i == 1 ) {
+			snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware", buf->fw_id);
+			dev_err(device, "[cpe] Try to load firmware : %s \n", path);
+		}
+		/* ASUS BSP ---*/
 
 		file = filp_open(path, O_RDONLY, 0);
 		if (IS_ERR(file))

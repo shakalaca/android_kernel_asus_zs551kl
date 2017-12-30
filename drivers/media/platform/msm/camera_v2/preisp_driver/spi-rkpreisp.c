@@ -56,6 +56,7 @@ extern int msm_camera_get_clk_info_internal(struct device *dev,
 //ASUS_BSP Deka +++ "add ref cnt for gpio 20"
 extern void gpio_switch_value_with_ref(unsigned gpio, int value);
 //ASUS_BSP Deka --- "add ref cnt for gpio 20"
+extern bool g_Charger_mode; 
 
 //asus bsp ralf<<
 #include "spi-rkpreisp.h"
@@ -1916,7 +1917,7 @@ static int spi_rk_preisp_probe(struct spi_device *spi)
     {
         printk("%s:%d mclk is NULL !!!!!!!!!!!! \n",__func__,__LINE__);
     }
-	if (!data->fw_nowait_mode) {
+    if (!data->fw_nowait_mode || g_Charger_mode) {
         return 0;
     }
 

@@ -505,6 +505,8 @@
 		pmi8998_bob: regulator-bob {
 			regulator-min-microvolt = <3312000>;
 			regulator-max-microvolt = <3600000>;
+			qcom,pwm-threshold-current = <2000000>;
+			qcom,init-bob-mode = <2>;
 			status = "okay";
 		};
 		pmi8998_bob_pin1: regulator-bob-pin1 {
@@ -513,6 +515,8 @@
 			qcom,set = <3>;
 			regulator-min-microvolt = <3312000>;
 			regulator-max-microvolt = <3600000>;
+			qcom,pwm-threshold-current = <2000000>;
+			qcom,init-bob-mode = <2>;
 			qcom,use-pin-ctrl-voltage1;
 		};
 		pmi8998_bob_pin2: regulator-bob-pin2 {
@@ -521,6 +525,8 @@
 			qcom,set = <3>;
 			regulator-min-microvolt = <3312000>;
 			regulator-max-microvolt = <3600000>;
+			qcom,pwm-threshold-current = <2000000>;
+			qcom,init-bob-mode = <2>;
 			qcom,use-pin-ctrl-voltage2;
 		};
 		pmi8998_bob_pin3: regulator-bob-pin3 {
@@ -529,6 +535,8 @@
 			qcom,set = <3>;
 			regulator-min-microvolt = <3312000>;
 			regulator-max-microvolt = <3600000>;
+			qcom,pwm-threshold-current = <2000000>;
+			qcom,init-bob-mode = <2>;
 			qcom,use-pin-ctrl-voltage3;
 		};
 	};

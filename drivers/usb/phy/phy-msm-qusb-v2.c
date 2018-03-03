@@ -93,6 +93,12 @@ MODULE_PARM_DESC(PHY_IMP_CTRL1, "QUSB IMP CTRL1");
 module_param(PHY_PWR_CTRL1, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(PHY_PWR_CTRL1, "QUSB PWR CTRL1");
 
+const char *phy_init_seq[] = 
+		{"qcom,qusb-phy-init-seq",
+         	"qcom,qusb-phy-init-seq-mp",
+		"qcom,qusb-phy-host-init-seq",
+		"qcom,qusb-phy-host-init-seq-mp"};
+
 struct qusb_phy {
 	struct usb_phy		phy;
 	void __iomem		*base;
@@ -904,6 +910,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	struct qusb_phy *qphy;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
+	const char *phy_init;
 	int ret = 0, size = 0;
 
 	qphy = devm_kzalloc(dev, sizeof(*qphy), GFP_KERNEL);
@@ -1058,7 +1065,12 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	}
 
 	size = 0;
-	of_get_property(dev->of_node, "qcom,qusb-phy-init-seq", &size);
+
+	if (g_ASUS_hwID == ZEUS_MP)
+		phy_init = phy_init_seq[1];
+	else
+		phy_init = phy_init_seq[0];
+	of_get_property(dev->of_node, phy_init, &size);
 	if (size) {
 		qphy->qusb_phy_init_seq = devm_kzalloc(dev,
 						size, GFP_KERNEL);
@@ -1071,7 +1083,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 			}
 
 			of_property_read_u32_array(dev->of_node,
-				"qcom,qusb-phy-init-seq",
+				phy_init,
 				qphy->qusb_phy_init_seq,
 				qphy->init_seq_len);
 		} else {
@@ -1080,8 +1092,13 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (g_ASUS_hwID == ZEUS_MP)
+		phy_init = phy_init_seq[3];
+	else
+		phy_init = phy_init_seq[2];
+
 	qphy->host_init_seq_len = of_property_count_elems_of_size(dev->of_node,
-				"qcom,qusb-phy-host-init-seq",
+				phy_init,
 				sizeof(*qphy->qusb_phy_host_init_seq));
 	if (qphy->host_init_seq_len > 0) {
 		qphy->qusb_phy_host_init_seq = devm_kcalloc(dev,
@@ -1090,7 +1107,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 					GFP_KERNEL);
 		if (qphy->qusb_phy_host_init_seq)
 			of_property_read_u32_array(dev->of_node,
-				"qcom,qusb-phy-host-init-seq",
+				phy_init,
 				qphy->qusb_phy_host_init_seq,
 				qphy->host_init_seq_len);
 		else

@@ -63,7 +63,7 @@ static unsigned char JT_TM1_FW[] = {
 */
 
 static unsigned char TP_5446_FW[] = {
-#include "ASUS_Zeus_V0x6B_app.i"
+#include "ASUS_Zeus_V0x6E_app.i"
 };
 /**/
 

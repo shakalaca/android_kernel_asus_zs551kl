@@ -29,6 +29,7 @@
 		spi3 = &spi_3;
 		spi4 = &spi_4;
 		spi5 = &spi_5;
+		spi6 = &spi_6;
 		spi7 = &spi_7;
 		spi8 = &spi_8;
 		spi9 = &spi_9;
@@ -38,6 +39,7 @@
 	};
 };
 
+#include "msm8998-pinctrl.dtsi"
 
 &soc {
 	dma_blsp1: qcom,sps-dma@0xc144000 { /* BLSP1 */
@@ -457,8 +459,7 @@
 		status = "disabled";
 	};
 
-/*
-	spi_6: spi@c17a000 { 
+	spi_6: spi@c17a000 { /* BLSP1 QUP6 */
 		compatible = "qcom,spi-qup-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -482,7 +483,7 @@
 			 <&clock_gcc clk_gcc_blsp1_qup6_spi_apps_clk>;
 		status = "disabled";
 	};
-*/
+
 
 	spi_7: spi@c1b5000 { /* BLSP2 QUP1 */
 		compatible = "qcom,spi-qup-v2";

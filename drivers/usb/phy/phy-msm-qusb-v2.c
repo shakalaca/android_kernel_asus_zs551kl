@@ -93,14 +93,22 @@ MODULE_PARM_DESC(PHY_IMP_CTRL1, "QUSB IMP CTRL1");
 module_param(PHY_PWR_CTRL1, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(PHY_PWR_CTRL1, "QUSB PWR CTRL1");
 
-const char *phy_init_seq[] = 
-		{"qcom,qusb-phy-init-seq",
-         	"qcom,qusb-phy-init-seq-mp",
-		"qcom,qusb-phy-host-init-seq",
-		"qcom,qusb-phy-host-init-seq-mp"};
+// ASUS_BSP Hardcode Eye-Diagram Parameters +++
+unsigned int default_device_tune_1;
+unsigned int default_device_tune_2;
+unsigned int default_device_tune_4;
+unsigned int default_device_imp_ctrl_1;
+unsigned int default_device_pwr_ctrl_1;
+unsigned int default_host_tune_1;
+unsigned int default_host_tune_2;
+unsigned int default_host_tune_4;
+unsigned int default_host_imp_ctrl_1;
+unsigned int default_host_pwr_ctrl_1;
+// ASUS_BSP Hardcode Eye-Diagram Parameters ---
 
 struct qusb_phy {
 	struct usb_phy		phy;
+	struct mutex		lock;
 	void __iomem		*base;
 	void __iomem		*efuse_reg;
 	void __iomem		*tcsr_clamp_dig_n;
@@ -115,6 +123,7 @@ struct qusb_phy {
 	struct regulator	*vdda18;
 	struct regulator	*vdda12;
 	int			vdd_levels[3]; /* none, low, high */
+	int			vdda33_levels[3];
 	int			init_seq_len;
 	int			*qusb_phy_init_seq;
 	int			host_init_seq_len;
@@ -124,7 +133,7 @@ struct qusb_phy {
 	int			efuse_bit_pos;
 	int			efuse_num_of_bits;
 
-	bool			power_enabled;
+	int			power_enabled_ref;
 	bool			clocks_enabled;
 	bool			cable_connected;
 	bool			suspended;
@@ -184,35 +193,47 @@ static int qusb_phy_config_vdd(struct qusb_phy *qphy, int high)
 	return ret;
 }
 
-static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on,
-						bool toggle_vdd)
+static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on)
 {
 	int ret = 0;
 
-	dev_dbg(qphy->phy.dev, "%s turn %s regulators. power_enabled:%d\n",
-			__func__, on ? "on" : "off", qphy->power_enabled);
+	mutex_lock(&qphy->lock);
 
-	if (toggle_vdd && qphy->power_enabled == on) {
-		dev_dbg(qphy->phy.dev, "PHYs' regulators are already ON.\n");
-		return 0;
+	dev_dbg(qphy->phy.dev,
+		"%s:req to turn %s regulators. power_enabled_ref:%d\n",
+			__func__, on ? "on" : "off", qphy->power_enabled_ref);
+
+	if (on && ++qphy->power_enabled_ref > 1) {
+		dev_dbg(qphy->phy.dev, "PHYs' regulators are already on\n");
+		goto done;
 	}
 
-	if (!on)
-		goto disable_vdda33;
-
-	if (toggle_vdd) {
-		ret = qusb_phy_config_vdd(qphy, true);
-		if (ret) {
-			dev_err(qphy->phy.dev, "Unable to config VDD:%d\n",
-								ret);
-			goto err_vdd;
+	if (!on) {
+		if (on == qphy->power_enabled_ref) {
+			dev_dbg(qphy->phy.dev,
+				"PHYs' regulators are already off\n");
+			goto done;
 		}
 
-		ret = regulator_enable(qphy->vdd);
-		if (ret) {
-			dev_err(qphy->phy.dev, "Unable to enable VDD\n");
-			goto unconfig_vdd;
-		}
+		qphy->power_enabled_ref--;
+		if (!qphy->power_enabled_ref)
+			goto disable_vdda33;
+
+		dev_dbg(qphy->phy.dev, "Skip turning off PHYs' regulators\n");
+		goto done;
+	}
+
+	ret = qusb_phy_config_vdd(qphy, true);
+	if (ret) {
+		dev_err(qphy->phy.dev, "Unable to config VDD:%d\n",
+							ret);
+		goto err_vdd;
+	}
+
+	ret = regulator_enable(qphy->vdd);
+	if (ret) {
+		dev_err(qphy->phy.dev, "Unable to enable VDD\n");
+		goto unconfig_vdd;
 	}
 
 	ret = regulator_set_load(qphy->vdda12, QUSB2PHY_1P2_HPM_LOAD);
@@ -261,8 +282,8 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on,
 		goto disable_vdda18;
 	}
 
-	ret = regulator_set_voltage(qphy->vdda33, QUSB2PHY_3P3_VOL_MIN,
-						QUSB2PHY_3P3_VOL_MAX);
+	ret = regulator_set_voltage(qphy->vdda33, qphy->vdda33_levels[0],
+						qphy->vdda33_levels[2]);
 	if (ret) {
 		dev_err(qphy->phy.dev,
 				"Unable to set voltage for vdda33:%d\n", ret);
@@ -275,10 +296,9 @@ static int qusb_phy_enable_power(struct qusb_phy *qphy, bool on,
 		goto unset_vdd33;
 	}
 
-	if (toggle_vdd)
-		qphy->power_enabled = true;
-
 	pr_debug("%s(): QUSB PHY's regulators are turned ON.\n", __func__);
+
+	mutex_unlock(&qphy->lock);
 	return ret;
 
 disable_vdda33:
@@ -287,7 +307,7 @@ disable_vdda33:
 		dev_err(qphy->phy.dev, "Unable to disable vdda33:%d\n", ret);
 
 unset_vdd33:
-	ret = regulator_set_voltage(qphy->vdda33, 0, QUSB2PHY_3P3_VOL_MAX);
+	ret = regulator_set_voltage(qphy->vdda33, 0, qphy->vdda33_levels[2]);
 	if (ret)
 		dev_err(qphy->phy.dev,
 			"Unable to set (0) voltage for vdda33:%d\n", ret);
@@ -328,22 +348,24 @@ put_vdda12_lpm:
 		dev_err(qphy->phy.dev, "Unable to set LPM of vdda12\n");
 
 disable_vdd:
-	if (toggle_vdd) {
-		ret = regulator_disable(qphy->vdd);
-		if (ret)
-			dev_err(qphy->phy.dev, "Unable to disable vdd:%d\n",
-								ret);
+	ret = regulator_disable(qphy->vdd);
+	if (ret)
+		dev_err(qphy->phy.dev, "Unable to disable vdd:%d\n",
+							ret);
 
 unconfig_vdd:
-		ret = qusb_phy_config_vdd(qphy, false);
-		if (ret)
-			dev_err(qphy->phy.dev, "Unable unconfig VDD:%d\n",
-								ret);
-	}
+	ret = qusb_phy_config_vdd(qphy, false);
+	if (ret)
+		dev_err(qphy->phy.dev, "Unable unconfig VDD:%d\n",
+							ret);
 err_vdd:
-	if (toggle_vdd)
-		qphy->power_enabled = false;
 	dev_dbg(qphy->phy.dev, "QUSB PHY's regulators are turned OFF.\n");
+
+	/* in case of error in turning on regulators */
+	if (qphy->power_enabled_ref)
+		qphy->power_enabled_ref--;
+done:
+	mutex_unlock(&qphy->lock);
 	return ret;
 }
 
@@ -359,7 +381,7 @@ static int qusb_phy_update_dpdm(struct usb_phy *phy, int value)
 	case POWER_SUPPLY_DP_DM_DPF_DMF:
 		dev_dbg(phy->dev, "POWER_SUPPLY_DP_DM_DPF_DMF\n");
 		if (!qphy->rm_pulldown) {
-			ret = qusb_phy_enable_power(qphy, true, false);
+			ret = qusb_phy_enable_power(qphy, true);
 			if (ret >= 0) {
 				qphy->rm_pulldown = true;
 				dev_dbg(phy->dev, "DP_DM_F: rm_pulldown:%d\n",
@@ -372,7 +394,7 @@ static int qusb_phy_update_dpdm(struct usb_phy *phy, int value)
 	case POWER_SUPPLY_DP_DM_DPR_DMR:
 		dev_dbg(phy->dev, "POWER_SUPPLY_DP_DM_DPR_DMR\n");
 		if (qphy->rm_pulldown) {
-			ret = qusb_phy_enable_power(qphy, false, false);
+			ret = qusb_phy_enable_power(qphy, false);
 			if (ret >= 0) {
 				qphy->rm_pulldown = false;
 				dev_dbg(phy->dev, "DP_DM_R: rm_pulldown:%d\n",
@@ -440,8 +462,7 @@ static void qusb_phy_host_init(struct usb_phy *phy)
 	int ret;
 	struct qusb_phy *qphy = container_of(phy, struct qusb_phy, phy);
 
-	dev_dbg(phy->dev, "%s\n", __func__);
-        printk("%s\n", __func__);
+	dev_info(phy->dev, "[USB] %s\n", __func__);
 
 	/* Perform phy reset */
 	ret = reset_control_assert(qphy->phy_reset);
@@ -452,7 +473,7 @@ static void qusb_phy_host_init(struct usb_phy *phy)
 	if (ret)
 		dev_err(phy->dev, "%s: phy_reset deassert failed\n", __func__);
 
-        /* Disable the PHY */
+	/* Disable the PHY */
         writel_relaxed(readl_relaxed(qphy->base + QUSB2PHY_PWR_CTRL1) |
                         PWR_CTRL1_POWR_DOWN,
                         qphy->base + QUSB2PHY_PWR_CTRL1);
@@ -472,11 +493,10 @@ static void qusb_phy_host_init(struct usb_phy *phy)
 
         if(PHY_IMP_CTRL1)
                 writel_relaxed(PHY_IMP_CTRL1,qphy->base + QUSB2PHY_IMP_CTRL1);
-
 	/* Ensure above write is completed before turning ON ref clk */
 	wmb();
 
-        /* Enable the PHY */
+	/* Enable the PHY */
         if (PHY_PWR_CTRL1) {
                 writel_relaxed(PHY_PWR_CTRL1 & ~PWR_CTRL1_POWR_DOWN,
                                 qphy->base + QUSB2PHY_PWR_CTRL1);
@@ -486,14 +506,14 @@ static void qusb_phy_host_init(struct usb_phy *phy)
                                 qphy->base + QUSB2PHY_PWR_CTRL1);
         }
 
-        /* Ensure above write is completed before turning ON ref clk */
+	/* Ensure above write is completed before turning ON ref clk */
         wmb();
 
-        printk("QUSB2PHY_PORT_TUNE1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1));
-        printk("QUSB2PHY_PORT_TUNE2:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2));
-        printk("QUSB2PHY_PORT_TUNE4:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4));
-        printk("QUSB2PHY_IMP_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_IMP_CTRL1));
-        printk("QUSB2PHY_PWR_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PWR_CTRL1));
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1));
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE2:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2));
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE4:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4));
+        dev_info(phy->dev, "QUSB2PHY_IMP_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_IMP_CTRL1));
+        dev_info(phy->dev, "QUSB2PHY_PWR_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PWR_CTRL1));
 
 	/* Require to get phy pll lock successfully */
 	usleep_range(150, 160);
@@ -504,7 +524,6 @@ static void qusb_phy_host_init(struct usb_phy *phy)
 		dev_err(phy->dev, "QUSB PHY PLL LOCK fails:%x\n", reg);
 		WARN_ON(1);
 	}
-
 }
 
 static int qusb_phy_init(struct usb_phy *phy)
@@ -513,12 +532,16 @@ static int qusb_phy_init(struct usb_phy *phy)
 	int ret;
 	u8 reg;
 
-	dev_dbg(phy->dev, "%s\n", __func__);
-        printk("%s\n", __func__);
+	dev_info(phy->dev, "[USB] %s\n", __func__);
 
-	ret = qusb_phy_enable_power(qphy, true, true);
-	if (ret)
+	/* bump up vdda33 voltage to operating level*/
+	ret = regulator_set_voltage(qphy->vdda33, qphy->vdda33_levels[1],
+						qphy->vdda33_levels[2]);
+	if (ret) {
+		dev_err(qphy->phy.dev,
+				"Unable to set voltage for vdda33:%d\n", ret);
 		return ret;
+	}
 
 	qusb_phy_enable_clocks(qphy, true);
 
@@ -561,11 +584,11 @@ static int qusb_phy_init(struct usb_phy *phy)
 			qphy->base + QUSB2PHY_PWR_CTRL1);
 
 	if (qphy->qusb_phy_init_seq) {
-                if (!(qphy->phy.flags & PHY_HOST_MODE))
+		if (!(qphy->phy.flags & PHY_HOST_MODE))
                         printk("[USB] QUSB PHY init using client parameters\n");
 		qusb_phy_write_seq(qphy->base, qphy->qusb_phy_init_seq,
 				qphy->init_seq_len, 0);
-        }
+	}
 
 	if (qphy->efuse_reg) {
 		if (!qphy->tune_val)
@@ -576,6 +599,90 @@ static int qusb_phy_init(struct usb_phy *phy)
 		writel_relaxed(qphy->tune_val,
 				qphy->base + QUSB2PHY_PORT_TUNE1);
 	}
+
+	//  ********** ASUS_BSP Hardcode Eye-Diagram Parameters **********
+	/*
+	 *  ZEUS_EVB   : 15
+	 *  ZEUS_EVB3  : 0
+	 *  ZEUS_SR1   : 1
+	 *  ZEUS_EVB5  : 2
+	 *  ZEUS_ER1   : 3
+	 *  ZEUS_ER2   : 4
+	 *  ZEUS_PREPR : 5
+	 *  ZEUS_PR1   : 6
+	 *  ZEUS_MP    : 7
+	 */
+	pr_info("[USB] %s(): Current hardware ID : (%d)", __func__, g_ASUS_hwID);
+	switch (g_ASUS_hwID) {
+		case ZEUS_EVB:
+		case ZEUS_EVB3:
+		case ZEUS_SR1:
+		case ZEUS_EVB5:
+		case ZEUS_ER1:
+		case ZEUS_ER2:
+		case ZEUS_PREPR:
+		case ZEUS_PR1:
+			default_device_tune_1 = 0xf0;
+			default_device_tune_2 = 0x1c;
+			default_device_tune_4 = 0x04;
+			default_device_imp_ctrl_1 = 0xd0;
+			default_device_pwr_ctrl_1 = 0x02;
+			default_host_tune_1 = 0xf0;
+			default_host_tune_2 = 0x1c;
+			default_host_tune_4 = 0x04;
+			default_host_imp_ctrl_1 = 0xd0;
+			default_host_pwr_ctrl_1 = 0x02;
+			break;
+
+		case ZEUS_MP:
+			default_device_tune_1 = 0xf0;
+			default_device_tune_2 = 0x1e;
+			default_device_tune_4 = 0x04;
+			default_device_imp_ctrl_1 = 0xd0;
+			default_device_pwr_ctrl_1 = 0x12;
+			default_host_tune_1 = 0xf0;
+			default_host_tune_2 = 0x1e;
+			default_host_tune_4 = 0x04;
+			default_host_imp_ctrl_1 = 0xd0;
+			default_host_pwr_ctrl_1 = 0x12;
+			break;
+
+		default:
+			default_device_tune_1 = 0xf0;
+			default_device_tune_2 = 0x1e;
+			default_device_tune_4 = 0x04;
+			default_device_imp_ctrl_1 = 0xd0;
+			default_device_pwr_ctrl_1 = 0x12;
+			default_host_tune_1 = 0xf0;
+			default_host_tune_2 = 0x1e;
+			default_host_tune_4 = 0x04;
+			default_host_imp_ctrl_1 = 0xd0;
+			default_host_pwr_ctrl_1 = 0x12;
+			break;
+
+	}
+
+	if (!(qphy->phy.flags & PHY_HOST_MODE)) {
+		pr_info("[USB] %s():device default modparams val:0x%x 0x%x 0x%x 0x%x 0x%x\n", __func__,
+			default_device_tune_1, default_device_tune_2, default_device_tune_4,
+			default_device_imp_ctrl_1, default_device_pwr_ctrl_1);
+		writel_relaxed(default_device_tune_1, qphy->base + QUSB2PHY_PORT_TUNE1);
+		writel_relaxed(default_device_tune_2, qphy->base + QUSB2PHY_PORT_TUNE2);
+		writel_relaxed(default_device_tune_4, qphy->base + QUSB2PHY_PORT_TUNE4);
+		writel_relaxed(default_device_imp_ctrl_1, qphy->base + QUSB2PHY_IMP_CTRL1);
+		writel_relaxed(default_device_pwr_ctrl_1, qphy->base + QUSB2PHY_PWR_CTRL1);
+	}
+	else {
+		pr_info("[USB] %s():host default modparams val:0x%x 0x%x 0x%x 0x%x 0x%x\n", __func__,
+			default_host_tune_1, default_host_tune_2, default_host_tune_4,
+			default_host_imp_ctrl_1, default_host_pwr_ctrl_1);
+		writel_relaxed(default_host_tune_1, qphy->base + QUSB2PHY_PORT_TUNE1);
+		writel_relaxed(default_host_tune_2, qphy->base + QUSB2PHY_PORT_TUNE2);
+		writel_relaxed(default_host_tune_4, qphy->base + QUSB2PHY_PORT_TUNE4);
+		writel_relaxed(default_host_imp_ctrl_1, qphy->base + QUSB2PHY_IMP_CTRL1);
+		writel_relaxed(default_host_pwr_ctrl_1, qphy->base + QUSB2PHY_PWR_CTRL1);
+	}
+	//  ********** ASUS_BSP Hardcode Eye-Diagram Parameters **********
 
 	/* If phy_tune1 modparam set, override tune1 value */
 	if (phy_tune1) {
@@ -623,13 +730,13 @@ static int qusb_phy_init(struct usb_phy *phy)
 		WARN_ON(1);
 	}
 
-        if (!(qphy->phy.flags & PHY_HOST_MODE)) {
-                printk("QUSB2PHY_PORT_TUNE1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1));
-                printk("QUSB2PHY_PORT_TUNE2:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2));
-                printk("QUSB2PHY_PORT_TUNE4:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4));
-                printk("QUSB2PHY_IMP_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_IMP_CTRL1));
-                printk("QUSB2PHY_PWR_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PWR_CTRL1));
-        }
+	if (!(qphy->phy.flags & PHY_HOST_MODE)) {
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE1));
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE2:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE2));
+        dev_info(phy->dev, "QUSB2PHY_PORT_TUNE4:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PORT_TUNE4));
+        dev_info(phy->dev, "QUSB2PHY_IMP_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_IMP_CTRL1));
+        dev_info(phy->dev, "QUSB2PHY_PWR_CTRL1:0x%02x\n", readb_relaxed(qphy->base + QUSB2PHY_PWR_CTRL1));
+    }
 
 	return 0;
 }
@@ -727,13 +834,16 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			writel_relaxed(intr_mask,
 				qphy->base + QUSB2PHY_INTR_CTRL);
 
-			/* enable phy auto-resume */
-			writel_relaxed(0x91,
+			if (linestate & (LINESTATE_DP | LINESTATE_DM)) {
+
+				/* enable phy auto-resume */
+				writel_relaxed(0x91,
 					qphy->base + QUSB2PHY_TEST1);
-			/* flush the previous write before next write */
-			wmb();
-			writel_relaxed(0x90,
-				qphy->base + QUSB2PHY_TEST1);
+				/* flush the previous write before next write */
+				wmb();
+				writel_relaxed(0x90,
+					qphy->base + QUSB2PHY_TEST1);
+			}
 
 			dev_dbg(phy->dev, "%s: intr_mask = %x\n",
 			__func__, intr_mask);
@@ -768,7 +878,7 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			wmb();
 
 			qusb_phy_enable_clocks(qphy, false);
-			qusb_phy_enable_power(qphy, false, true);
+			qusb_phy_enable_power(qphy, false);
 		}
 		qphy->suspended = true;
 	} else {
@@ -800,7 +910,7 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 			 */
 			wmb();
 
-			qusb_phy_enable_power(qphy, true, true);
+			qusb_phy_enable_power(qphy, true);
 			ret = reset_control_assert(qphy->phy_reset);
 			if (ret)
 				dev_err(phy->dev, "%s: phy_reset assert failed\n",
@@ -910,7 +1020,6 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	struct qusb_phy *qphy;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
-	const char *phy_init;
 	int ret = 0, size = 0;
 
 	qphy = devm_kzalloc(dev, sizeof(*qphy), GFP_KERNEL);
@@ -1065,12 +1174,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	}
 
 	size = 0;
-
-	if (g_ASUS_hwID == ZEUS_MP)
-		phy_init = phy_init_seq[1];
-	else
-		phy_init = phy_init_seq[0];
-	of_get_property(dev->of_node, phy_init, &size);
+	of_get_property(dev->of_node, "qcom,qusb-phy-init-seq", &size);
 	if (size) {
 		qphy->qusb_phy_init_seq = devm_kzalloc(dev,
 						size, GFP_KERNEL);
@@ -1083,7 +1187,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 			}
 
 			of_property_read_u32_array(dev->of_node,
-				phy_init,
+				"qcom,qusb-phy-init-seq",
 				qphy->qusb_phy_init_seq,
 				qphy->init_seq_len);
 		} else {
@@ -1092,13 +1196,8 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (g_ASUS_hwID == ZEUS_MP)
-		phy_init = phy_init_seq[3];
-	else
-		phy_init = phy_init_seq[2];
-
 	qphy->host_init_seq_len = of_property_count_elems_of_size(dev->of_node,
-				phy_init,
+				"qcom,qusb-phy-host-init-seq",
 				sizeof(*qphy->qusb_phy_host_init_seq));
 	if (qphy->host_init_seq_len > 0) {
 		qphy->qusb_phy_host_init_seq = devm_kcalloc(dev,
@@ -1107,7 +1206,7 @@ static int qusb_phy_probe(struct platform_device *pdev)
 					GFP_KERNEL);
 		if (qphy->qusb_phy_host_init_seq)
 			of_property_read_u32_array(dev->of_node,
-				phy_init,
+				"qcom,qusb-phy-host-init-seq",
 				qphy->qusb_phy_host_init_seq,
 				qphy->host_init_seq_len);
 		else
@@ -1119,6 +1218,19 @@ static int qusb_phy_probe(struct platform_device *pdev)
 					 ARRAY_SIZE(qphy->vdd_levels));
 	if (ret) {
 		dev_err(dev, "error reading qcom,vdd-voltage-level property\n");
+		return ret;
+	}
+
+	ret = of_property_read_u32_array(dev->of_node,
+					"qcom,vdda33-voltage-level",
+					 (u32 *) qphy->vdda33_levels,
+					 ARRAY_SIZE(qphy->vdda33_levels));
+	if (ret == -EINVAL) {
+		qphy->vdda33_levels[0] = QUSB2PHY_3P3_VOL_MIN;
+		qphy->vdda33_levels[1] = QUSB2PHY_3P3_VOL_MIN;
+		qphy->vdda33_levels[2] = QUSB2PHY_3P3_VOL_MAX;
+	} else if (ret) {
+		dev_err(dev, "error reading qcom,vdda33-voltage-level property\n");
 		return ret;
 	}
 
@@ -1145,6 +1257,8 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		dev_err(dev, "unable to get vdda12 supply\n");
 		return PTR_ERR(qphy->vdda12);
 	}
+
+	mutex_init(&qphy->lock);
 
 	platform_set_drvdata(pdev, qphy);
 
@@ -1183,7 +1297,7 @@ static int qusb_phy_remove(struct platform_device *pdev)
 		qphy->clocks_enabled = false;
 	}
 
-	qusb_phy_enable_power(qphy, false, true);
+	qusb_phy_enable_power(qphy, false);
 
 	return 0;
 }

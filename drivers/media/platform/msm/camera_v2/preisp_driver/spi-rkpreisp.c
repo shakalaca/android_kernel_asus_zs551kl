@@ -430,6 +430,7 @@ static int asus_power_control(struct spi_rk_preisp_data *data,int value)
 		//asus bsp ralf:add for enter deep sleep mode when camera close>>
             if(value > 0){ //for power on
                 if(data->en1v0_gpio >0){
+                    printk("%s call gpio_switch_value_with_ref\n", __func__);
                     gpio_switch_value_with_ref(data->en1v0_gpio, data->en1v0_active); //ASUS_BSP Deka  "add ref cnt for gpio 20"
                     printk("%s enable %s\n", __func__, "en1v0_gpio");
                     usleep_range(50,51);

@@ -33,8 +33,6 @@
 #define UHS_SDR25_MIN_DTR	(25 * 1000 * 1000)
 #define UHS_SDR12_MIN_DTR	(12.5 * 1000 * 1000)
 
-bool sd_exist = false;	//ASUS_BSP Deeo : set a flag depend on SD card exist or not.
-
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -1185,8 +1183,6 @@ static void mmc_sd_detect(struct mmc_host *host)
 		printk(KERN_ERR "%s(%s): Unable to re-detect card (%d)\n",
 		       __func__, mmc_hostname(host), err);
 		err = _mmc_detect_card_removed(host);
-		sd_exist = false; //ASUS_BSP Deeo : set false
-		ASUSEvtlog("[%s]: Remove SD %d.\n", mmc_hostname(host), sd_exist);
 	}
 #else
 	err = _mmc_detect_card_removed(host);
@@ -1248,7 +1244,10 @@ static int mmc_sd_suspend(struct mmc_host *host)
 	if (!err) {
 		pm_runtime_disable(&host->card->dev);
 		pm_runtime_set_suspended(&host->card->dev);
-	}
+	/* if suspend fails, force mmc_detect_change during resume */
+	} else if (mmc_bus_manual_resume(host))
+		host->ignore_bus_resume_flags = true;
+
 	MMC_TRACE(host, "%s: Exit err: %d\n", __func__, err);
 
 	return err;
@@ -1269,10 +1268,6 @@ static int _mmc_sd_resume(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-	if (host->card->sdr104_blocked) {
-		mmc_host_set_sdr104(host);
-		host->card->sdr104_blocked = false;
-	}
 
 	if (!mmc_card_suspended(host->card))
 		goto out;
@@ -1298,8 +1293,16 @@ static int _mmc_sd_resume(struct mmc_host *host)
 #else
 	err = mmc_sd_init_card(host, host->card->ocr, host->card);
 #endif
+	if (err) {
+		pr_err("%s: %s: mmc_sd_init_card_failed (%d)\n",
+				mmc_hostname(host), __func__, err);
+		mmc_power_off(host);
+		goto out;
+	}
 	mmc_card_clr_suspended(host->card);
 
+	if (host->card->sdr104_blocked)
+		goto out;
 	err = mmc_resume_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to resume clock scaling (%d)\n",
@@ -1470,8 +1473,6 @@ int mmc_attach_sd(struct mmc_host *host)
 		goto remove_card;
 	}
 
-	sd_exist = true;	//ASUS_BSP Deeo : set true
-	ASUSEvtlog("[%s]: Detect SD %d.\n", mmc_hostname(host), sd_exist);
 	return 0;
 
 remove_card:

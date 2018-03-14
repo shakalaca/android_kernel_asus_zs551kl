@@ -3002,7 +3002,9 @@ static ssize_t ftxxxx_ftsscaptest_show(struct device *dev, struct device_attribu
 	printk("[Focal][%s]	123 data result = %d !\n", __func__, err);
 
 	for (i = 0; i < TX_NUM; i++) {
+		
 		for (j = 0; j < RX_NUM; j++) {
+
 			count += snprintf(tmpbuf + count, BufLen - count, "%5d, ", TPrawdata[i][j]);
 			/*msleep(2000);*/
 		}
@@ -3036,15 +3038,17 @@ static ssize_t ftxxxx_ftsscaptest_show(struct device *dev, struct device_attribu
 	for (i = TX_NUM; i < TX_NUM+8; i++) 
 	{
 		if(i>=TX_NUM && flag[i-TX_NUM]==0)
-		{	
+		{			
 			continue;
 		}
 		for (j = 0; j < RX_NUM; j++) 
 		{
 			if(i>=TX_NUM && j==TX_NUM && ((i-TX_NUM)%2)==1)
-			{		
+			{			
 				break;
 			}
+			
+				
 			count += snprintf(tmpbuf + count, BufLen - count,"%5d, ",  TPrawdata[i][j]);
 			//msleep(2000);
 		}
@@ -3075,6 +3079,7 @@ static ssize_t ftxxxx_ftsscaptest_show(struct device *dev, struct device_attribu
 	filp_close(filp, NULL);
 
 	msleep(1000);
+
 	filp = filp_open("/mnt/sdcard/TP_Raw_data.txt", O_RDWR | O_CREAT, S_IRUSR);
 	printk("[touch][test]open txt \n");
 	if (IS_ERR(filp)) {

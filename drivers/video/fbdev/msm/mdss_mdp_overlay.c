@@ -577,9 +577,9 @@ static int __mdss_mdp_validate_qseed3_cfg(struct mdss_mdp_pipe *pipe)
 
 		vert_fetch_pixels = DECIMATED_DIMENSION(src_h +
 				(int8_t)(pipe->scaler.top_ftch[plane]
-					& 0xFF) +
+					& 0xFF)+
 				(int8_t)(pipe->scaler.btm_ftch[plane]
-				& 0xFF),
+					& 0xFF),
 			pipe->vert_deci);
 
 		if ((hor_req_pixels != hor_fetch_pixels) ||
@@ -2375,6 +2375,8 @@ static void __overlay_set_secure_transition_state(struct msm_fb_data_type *mfd)
 	/* Reset the secure transition state */
 	mdp5_data->secure_transition_state = SECURE_TRANSITION_NONE;
 
+	mdp5_data->cache_null_commit = list_empty(&mdp5_data->pipes_used);
+
 	/*
 	 * Secure transition would be NONE in two conditions:
 	 * 1. All the features are already disabled and state remains
@@ -2584,6 +2586,7 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 	ATRACE_BEGIN("sspp_programming");
 	ret = __overlay_queue_pipes(mfd);
 	ATRACE_END("sspp_programming");
+
 	mutex_unlock(&mdp5_data->list_lock);
 
 	mdp5_data->kickoff_released = false;
@@ -5026,7 +5029,7 @@ static int mdss_fb_get_metadata(struct msm_fb_data_type *mfd,
 		break;
 	case metadata_op_get_ion_fd:
 		if (mfd->fb_ion_handle && mfd->fb_ion_client) {
-            get_dma_buf(mfd->fbmem_buf);
+			get_dma_buf(mfd->fbmem_buf);
 			metadata->data.fbmem_ionfd =
 				ion_share_dma_buf_fd(mfd->fb_ion_client,
 					mfd->fb_ion_handle);

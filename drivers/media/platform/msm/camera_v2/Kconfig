@@ -253,11 +253,3 @@ config MSM_SEC_CCI_DEBUG
 	---help---
 	  Enables simulation of secure camera for Secure CCI Realy
 	  debugging.
-
-config INPUT_ELISA
-	tristate "HEPTAGON Olivia laser sensor"
-	depends on I2C
-	help
-	  Say Y here to enable HEPTAGON ELISA Laser Sensor.
-
-	  

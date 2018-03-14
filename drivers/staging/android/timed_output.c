@@ -47,7 +47,6 @@ static ssize_t enable_store(struct device *dev, struct device_attribute *attr,
 	rc = kstrtoint(buf, 0, &value);
 	if (rc != 0)
 		return -EINVAL;
-	dev_info(dev, "enable_store:%d\n", value);
 
 	tdev->enable(tdev, value);
 

@@ -62,26 +62,6 @@ struct md_table {
 	struct md_region	entry[MAX_NUM_ENTRIES];
 };
 
-<<<<<<< HEAD
-/* Protect elfheader and smem table from deferred calls contention */
-static DEFINE_SPINLOCK(mdt_lock);
-static bool minidump_enabled;
-static struct md_table minidump_table;
-static unsigned int pendings;
-static unsigned int region_idx = 1; /* First entry is ELF header*/
-
-/* ELF Header */
-static struct elfhdr *md_ehdr;
-/* ELF Program header */
-static struct elf_phdr *phdr;
-/* ELF Section header */
-static struct elf_shdr *shdr;
-/* Section offset in elf image */
-static u64 elf_offset;
-/* String table index, first byte must be '\0' */
-static unsigned int stringtable_idx = 1;
-
-=======
 /*
  * md_elfhdr: Minidump table elf header
  * @md_ehdr: elf main header
@@ -106,6 +86,16 @@ static struct md_elfhdr	minidump_elfheader;
 bool minidump_enabled;
 static unsigned int pendings;
 static unsigned int region_idx = 1; /* First entry is ELF header*/
+
+static inline struct elf_shdr *elf_sheader(struct elfhdr *hdr)
+{
+	return (struct elf_shdr *)((size_t)hdr + (size_t)hdr->e_shoff);
+}
+
+static inline struct elf_shdr *elf_section(struct elfhdr *hdr, int idx)
+{
+	return &elf_sheader(hdr)[idx];
+}
 
 static inline struct elf_phdr *elf_pheader(struct elfhdr *hdr)
 {
@@ -195,7 +185,6 @@ static int md_update_smem_table(const struct md_region *entry)
 
 	return 0;
 }
-
 
 int msm_minidump_add_region(const struct md_region *entry)
 {

@@ -4105,13 +4105,13 @@ struct module *__module_text_address(unsigned long addr)
 	return mod;
 }
 EXPORT_SYMBOL_GPL(__module_text_address);
-extern int g_printing_regs;
+
 /* Don't grab lock, we're oopsing. */
 void print_modules(void)
 {
 	struct module *mod;
 	char buf[8];
-g_printing_regs = 1;
+
 	printk(KERN_DEFAULT "Modules linked in:");
 	/* Most callers should already have preempt disabled, but make sure */
 	preempt_disable();
@@ -4124,7 +4124,6 @@ g_printing_regs = 1;
 	if (last_unloaded_module[0])
 		pr_cont(" [last unloaded: %s]", last_unloaded_module);
 	pr_cont("\n");
-g_printing_regs = 0;	
 }
 
 #ifdef CONFIG_MODVERSIONS

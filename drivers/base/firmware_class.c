@@ -311,7 +311,8 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates/" UTS_RELEASE,
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
-	"/lib/firmware"
+	"/lib/firmware",
+	"/lib64/firmware"
 };
 
 /*
@@ -372,12 +373,9 @@ static int fw_get_filesystem_firmware(struct device *device,
 	int i, len;
 	int rc = -ENOENT;
 	char *path;
+
 	/* ASUS BSP : For Change SSC FW loading path to system/etc/firmware +++*/
 	char fw_name[4];
-	/* ASUS BSP ---*/
-
-	/* ASUS BSP : For Change Venus FW loading path to system/etc/firmware +++*/
-	char v_name[5];
 	/* ASUS BSP ---*/
 
 	path = __getname();
@@ -398,36 +396,21 @@ static int fw_get_filesystem_firmware(struct device *device,
 			break;
 		}
 
-		/* ASUS BSP : For Change SSC FW loading path to system/etc/firmware */
+		/* ASUS BSP : For Change SSC FW loading path to /system/vendor/firmware */
 		snprintf(fw_name, 5, "%s", buf->fw_id);
 		if (!strcmp(fw_name, "slpi")  && i == 1 ) {
-			snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware", buf->fw_id);
+			snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/firmware", buf->fw_id);
 			dev_err(device, "[Sensor] Try to load firmware : %s \n", path);
 		}
 		/* ASUS BSP ---*/
 
-		/* ASUS BSP : For Change ADSP FW loading path to system/etc/firmware */
-		if (!strcmp(fw_name, "adsp")  && i == 1 ) {
-			snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware", buf->fw_id);
-			dev_err(device, "[Audio] Try to load firmware : %s \n", path);
-		}
-		/* ASUS BSP ---*/
-
-              /* ASUS BSP : For Change Venus FW loading path to system/etc/firmware */
-              snprintf(v_name, 6, "%s", buf->fw_id);
-              if (!strcmp(v_name, "venus")  && i == 1 ) {
-                      snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware", buf->fw_id);
-                      dev_err(device, "[Venus] Try to load firmware : %s \n", path);
-              }
-              /* ASUS BSP ---*/
-
-		/* ASUS BSP : For Change cpe FW loading path to system/etc/firmware */
-		if (!strcmp(fw_name, "cpe")  && i == 1 ) {
-			snprintf(path, PATH_MAX, "%s/%s", "/system/etc/firmware", buf->fw_id);
+        /* ASUS BSP : For Change cpe FW loading path to system/etc/firmware */
+		if (!strcmp(fw_name, "cpe_")  && i == 1 ) {
+			snprintf(path, PATH_MAX, "%s/%s", "/system/vendor/etc/firmware", buf->fw_id);
 			dev_err(device, "[cpe] Try to load firmware : %s \n", path);
 		}
 		/* ASUS BSP ---*/
-
+		
 		file = filp_open(path, O_RDONLY, 0);
 		if (IS_ERR(file))
 			continue;
@@ -1149,13 +1132,14 @@ static int _request_firmware_load(struct firmware_priv *fw_priv,
 		timeout = MAX_JIFFY_OFFSET;
 	}
 
-	retval = wait_for_completion_interruptible_timeout(&buf->completion,
+	timeout = wait_for_completion_killable_timeout(&buf->completion,
 			timeout);
-	if (retval == -ERESTARTSYS || !retval) {
+	if (timeout == -ERESTARTSYS || !timeout) {
+		retval = timeout;
 		mutex_lock(&fw_lock);
 		fw_load_abort(fw_priv);
 		mutex_unlock(&fw_lock);
-	} else if (retval > 0) {
+	} else if (timeout > 0) {
 		retval = 0;
 	}
 

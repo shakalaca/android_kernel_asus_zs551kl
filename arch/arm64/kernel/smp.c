@@ -54,6 +54,7 @@
 #include <asm/ptrace.h>
 #include <asm/virt.h>
 #include <asm/edac.h>
+#include <soc/qcom/minidump.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ipi.h>
@@ -148,7 +149,7 @@ asmlinkage void secondary_start_kernel(void)
 
 	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
 
-	//pr_debug("CPU%u: Booted secondary processor\n", cpu);
+	pr_debug("CPU%u: Booted secondary processor\n", cpu);
 
 	/*
 	 * TTBR0 is only used for the identity mapping at this stage. Make it
@@ -186,8 +187,8 @@ asmlinkage void secondary_start_kernel(void)
 	 * the CPU migration code to notice that the CPU is online
 	 * before we continue.
 	 */
-	//pr_info("CPU%u: Booted secondary processor [%08x]\n",
-	//				 cpu, read_cpuid_id());
+	pr_info("CPU%u: Booted secondary processor [%08x]\n",
+					 cpu, read_cpuid_id());
 	set_cpu_online(cpu, true);
 	complete(&cpu_running);
 
@@ -740,6 +741,7 @@ static void ipi_cpu_stop(unsigned int cpu, struct pt_regs *regs)
 		pr_crit("CPU%u: stopping\n", cpu);
 		show_regs(regs);
 		dump_stack();
+		dump_stack_minidump(regs->sp);
 		arm64_check_cache_ecc(NULL);
 		raw_spin_unlock(&stop_lock);
 	}

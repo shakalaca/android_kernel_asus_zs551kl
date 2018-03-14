@@ -32,7 +32,6 @@
 #include <linux/of.h>
 #include <linux/pm.h>
 #include <linux/jiffies.h>
-#include <linux/gpio.h>	//ASUS_BSP Deeo : add for using gpio_get_value
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmc.h>
@@ -57,8 +56,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_erase_start);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_erase_end);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_rw_start);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mmc_blk_rw_end);
-
-extern bool sd_exist; //ASUS_BSP Deeo : extern sd_exit for skip mmc_detect_change
 
 /* If the device is not responding */
 #define MMC_CORE_TIMEOUT_MS	(10 * 60 * 1000) /* 10 minute timeout */
@@ -554,6 +551,7 @@ static int mmc_devfreq_set_target(struct device *dev,
 			mmc_hostname(host), *freq, current->comm);
 	}
 
+
 	mmc_host_clk_release(host);
 rel_host:
 	mmc_release_host(host);
@@ -573,9 +571,6 @@ void mmc_deferred_scaling(struct mmc_host *host)
 {
 	unsigned long target_freq;
 	int err;
-
-	if (mmc_card_sd(host->card) && host->card->sdr104_blocked)
-		return;
 
 	if (!host->clk_scaling.enable)
 		return;
@@ -1017,6 +1012,7 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 			pr_debug("%s:     %d bytes transferred: %d\n",
 				mmc_hostname(host),
 				mrq->data->bytes_xfered, mrq->data->error);
+#ifdef CONFIG_BLOCK
 			if (mrq->lat_hist_enabled) {
 				ktime_t completion;
 				u_int64_t delta_us;
@@ -1028,6 +1024,7 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 					(mrq->data->flags & MMC_DATA_READ),
 					delta_us);
 			}
+#endif
 			trace_mmc_blk_rw_end(cmd->opcode, cmd->arg, mrq->data);
 		}
 
@@ -1744,7 +1741,6 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 				    struct mmc_async_req *areq, int *error)
 {
 	int err = 0;
-	int start_err = 0;
 	struct mmc_async_req *data = host->areq;
 
 	/* Prepare a new request */
@@ -1783,15 +1779,17 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 	}
 
 	if (!err && areq) {
+#ifdef CONFIG_BLOCK
 		if (host->latency_hist_enabled) {
 			areq->mrq->io_start = ktime_get();
 			areq->mrq->lat_hist_enabled = 1;
 		} else
 			areq->mrq->lat_hist_enabled = 0;
+#endif
 		trace_mmc_blk_rw_start(areq->mrq->cmd->opcode,
 				       areq->mrq->cmd->arg,
 				       areq->mrq->data);
-		start_err = __mmc_start_data_req(host, areq->mrq);
+		__mmc_start_data_req(host, areq->mrq);
 	}
 
 	if (host->areq)
@@ -3288,7 +3286,7 @@ void mmc_detach_bus(struct mmc_host *host)
 
 	mmc_bus_put(host);
 }
-extern int detect_pin; //ASUS_BSP Deeo : record status gpio
+
 static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 				bool cd_irq)
 {
@@ -3299,9 +3297,6 @@ static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 	spin_unlock_irqrestore(&host->lock, flags);
 #endif
 
-	//ASUS_BSP Deeo : record tray & detect pin status in evtlog.
-	if (cd_irq)
-		ASUSEvtlog("[%s]: Detect pin %d, status %d.\n", mmc_hostname(host), detect_pin, gpio_get_value(detect_pin));
 	/*
 	 * If the device is configured as wakeup, we prevent a new sleep for
 	 * 5 s to give provision for user space to consume the event.
@@ -3311,6 +3306,13 @@ static void _mmc_detect_change(struct mmc_host *host, unsigned long delay,
 		pm_wakeup_event(mmc_dev(host), 5000);
 
 	host->detect_change = 1;
+	/*
+	 * Change in cd_gpio state, so make sure detection part is
+	 * not overided because of manual resume.
+	 */
+	if (cd_irq && mmc_bus_manual_resume(host))
+		host->ignore_bus_resume_flags = true;
+
 	mmc_schedule_delayed_work(&host->detect, delay);
 }
 
@@ -4175,6 +4177,18 @@ int mmc_detect_card_removed(struct mmc_host *host)
 }
 EXPORT_SYMBOL(mmc_detect_card_removed);
 
+/*
+ * This should be called to make sure that detect work(mmc_rescan)
+ * is completed.Drivers may use this function from async schedule/probe
+ * contexts to make sure that the bootdevice detection is completed on
+ * completion of async_schedule.
+ */
+void mmc_flush_detect_work(struct mmc_host *host)
+{
+	flush_delayed_work(&host->detect);
+}
+EXPORT_SYMBOL(mmc_flush_detect_work);
+
 void mmc_rescan(struct work_struct *work)
 {
 	unsigned long flags;
@@ -4209,6 +4223,8 @@ void mmc_rescan(struct work_struct *work)
 		host->bus_ops->detect(host);
 
 	host->detect_change = 0;
+	if (host->ignore_bus_resume_flags)
+		host->ignore_bus_resume_flags = false;
 
 	/*
 	 * Let mmc_bus_put() free the bus/bus_ops if we've found that
@@ -4466,18 +4482,14 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 
 		spin_lock_irqsave(&host->lock, flags);
 		host->rescan_disable = 0;
-		if (mmc_bus_manual_resume(host)) {
+		if (mmc_bus_manual_resume(host) &&
+				!host->ignore_bus_resume_flags) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			break;
 		}
 		spin_unlock_irqrestore(&host->lock, flags);
+		_mmc_detect_change(host, 0, false);
 
-		//ASUS_BSP Deeo : skip _mmc_detect_change whie no SD card on tray +++
-		if (sd_exist)
-			_mmc_detect_change(host, 0, false);
-		else
-			printk("[MMC] skip _mmc_detect_change, because sd_exist %d\n", sd_exist);
-		//ASUS_BSP Deeo : skip _mmc_detect_change whie no SD card on tray ---
 	}
 
 	return 0;
@@ -4557,6 +4569,7 @@ static void __exit mmc_exit(void)
 	destroy_workqueue(workqueue);
 }
 
+#ifdef CONFIG_BLOCK
 static ssize_t
 latency_hist_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -4604,6 +4617,7 @@ mmc_latency_hist_sysfs_exit(struct mmc_host *host)
 {
 	device_remove_file(&host->class_dev, &dev_attr_latency_hist);
 }
+#endif
 
 subsys_initcall(mmc_init);
 module_exit(mmc_exit);

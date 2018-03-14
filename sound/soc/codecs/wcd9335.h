@@ -44,6 +44,7 @@
 
 #define WCD9335_ANC_DMIC_X2_FULL_RATE 1
 #define WCD9335_ANC_DMIC_X2_HALF_RATE 0
+
 /* Number of input and output Slimbus port */
 enum {
 	TASHA_RX0 = 0,

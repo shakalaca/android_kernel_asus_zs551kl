@@ -1445,13 +1445,11 @@ static int cm3323e_regulator_init(struct cm3323e_info *dev_t)
 		return -1;
 	}
 	
-	/*
 	ret = regulator_set_load(dev_t->reg, CM3323E_SUPPLY_CURRENT);
 	if (ret < 0) {
 		dev_err(&dev_t->i2c_client->dev, "Failed to set load for vincentr reg %d\n", ret);
 		return ret;
 	}
-	*/
 
 /* Remove regulator enable/disable, it is always-on now */
 #if 0

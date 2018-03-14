@@ -5,7 +5,7 @@
  *
  * Copyright (C) 2012 Alexandra Chin <alexandra.chin@tw.synaptics.com>
  * Copyright (C) 2012 Scott Lin <scott.lin@tw.synaptics.com>
- * Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -101,7 +101,6 @@ enum subsystem {
 #define SYNA_S332U_PACKAGE_ID		332
 #define SYNA_S332U_PACKAGE_ID_REV		85
 
-
 static int synaptics_rmi4_f12_set_enables(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short ctrl28);
 
@@ -165,8 +164,6 @@ static ssize_t synaptics_secure_touch_enable_store(struct device *dev,
 static ssize_t synaptics_secure_touch_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 #endif
-static ssize_t synaptics_touch_status_show(struct device *dev,
-		struct device_attribute *attr, char *buf);
 
 struct synaptics_rmi4_f01_device_status {
 	union {
@@ -407,11 +404,7 @@ static struct device_attribute attrs[] = {
 			synaptics_secure_touch_show,
 			NULL),
 #endif
-	__ATTR(touch_status, S_IRUGO ,
-			synaptics_touch_status_show,
-			NULL),
 };
-bool TouchStatus=0; 
 
 #define MAX_BUF_SIZE	256
 #define VKEY_VER_CODE	"0x01"
@@ -499,33 +492,25 @@ static int synaptics_i2c_change_pipe_owner(
 
 static void synaptics_secure_touch_init(struct synaptics_rmi4_data *data)
 {
-	int ret = 0;
 	data->st_initialized = 0;
 	init_completion(&data->st_powerdown);
 	init_completion(&data->st_irq_processed);
 	/* Get clocks */
 	data->core_clk = clk_get(data->pdev->dev.parent, "core_clk");
 	if (IS_ERR(data->core_clk)) {
-		ret = PTR_ERR(data->core_clk);
-		dev_err(data->pdev->dev.parent,
-			"%s: error on clk_get(core_clk):%d\n", __func__, ret);
-		return;
+		data->core_clk = NULL;
+		dev_warn(data->pdev->dev.parent,
+			"%s: core_clk is not defined\n", __func__);
 	}
 
 	data->iface_clk = clk_get(data->pdev->dev.parent, "iface_clk");
 	if (IS_ERR(data->iface_clk)) {
-		ret = PTR_ERR(data->iface_clk);
-		dev_err(data->pdev->dev.parent,
-			"%s: error on clk_get(iface_clk):%d\n", __func__, ret);
-		goto err_iface_clk;
+		data->iface_clk = NULL;
+		dev_warn(data->pdev->dev.parent,
+			"%s: iface_clk is not defined\n", __func__);
 	}
 
 	data->st_initialized = 1;
-	return;
-
-err_iface_clk:
-		clk_put(data->core_clk);
-		data->core_clk = NULL;
 }
 static void synaptics_secure_touch_notify(struct synaptics_rmi4_data *rmi4_data)
 {
@@ -693,19 +678,6 @@ static ssize_t synaptics_secure_touch_show(struct device *dev,
 
 }
 #endif
-
-static ssize_t synaptics_touch_status_show(struct device *dev,
-				    struct device_attribute *attr, char *buf)
-{
-	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	//int val = 0;
-	printk("[touch]touch status=%u Touch_status=%u  \n",rmi4_data->touch_status,TouchStatus);
-
-	return scnprintf(buf, PAGE_SIZE, "%u\n", TouchStatus);
-
-}
-
-
 
 static ssize_t synaptics_rmi4_full_pm_cycle_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -3730,7 +3702,6 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	rmi4_data->fw_updating = false;
 	rmi4_data->fingers_on_2d = false;
 	rmi4_data->update_coords = true;
-	rmi4_data->touch_status=false;
 
 	rmi4_data->irq_enable = synaptics_rmi4_irq_enable;
 	rmi4_data->reset_device = synaptics_rmi4_reset_device;
@@ -3742,19 +3713,13 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	if (retval) {
 		dev_err(&pdev->dev,
 			"%s: regulator configuration failed\n", __func__);
-		rmi4_data->touch_status=false;
 		goto err_regulator_configure;
-	}else{
-		rmi4_data->touch_status=true;
 	}
 	retval = synaptics_dsx_regulator_enable(rmi4_data, true);
 	if (retval) {
 		dev_err(&pdev->dev,
 			"%s: regulator enable failed\n", __func__);
-		rmi4_data->touch_status=false;
 		goto err_regulator_enable;
-	}else{
-		rmi4_data->touch_status=true;
 	}
 
 	platform_set_drvdata(pdev, rmi4_data);
@@ -3765,12 +3730,8 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 				"%s: Failed to set up GPIO's\n",
 				__func__);
-			rmi4_data->touch_status=false;
 			goto err_set_gpio;
-		}else{
-		rmi4_data->touch_status=true;
 		}
-		
 	} else {
 		retval = synaptics_dsx_pinctrl_init(rmi4_data);
 		if (!retval && rmi4_data->ts_pinctrl) {
@@ -3785,7 +3746,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 				dev_err(&pdev->dev,
 					"%s: Failed to select %s pinstate %d\n",
 					__func__, PINCTRL_STATE_ACTIVE, retval);
-				}		
+			}
 		}
 
 		retval = synaptics_dsx_gpio_configure(rmi4_data, true);
@@ -3793,23 +3754,15 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 					"%s: Failed to set up GPIO's\n",
 					__func__);
-			rmi4_data->touch_status=false;
 			goto err_config_gpio;
-		}else{
-			rmi4_data->touch_status=true;
 		}
 	}
 
-    printk("[synaptics] %s fw name = %s\n", __func__, bdata->fw_name);
 	if (bdata->fw_name) {
 		len = strlen(bdata->fw_name);
 		if (len > SYNA_FW_NAME_MAX_LEN - 1) {
 			dev_err(&pdev->dev, "Invalid firmware name\n");
-			rmi4_data->touch_status=false;
 			goto err_set_input_dev;
-		}
-		else{
-				rmi4_data->touch_status=true;
 		}
 
 		strlcpy(rmi4_data->fw_name, bdata->fw_name, len + 1);
@@ -3820,10 +3773,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 				"%s: Failed to set up input device\n",
 				__func__);
-		rmi4_data->touch_status=false;
 		goto err_set_input_dev;
-	}else{
-		rmi4_data->touch_status=true;
 	}
 
 #ifdef CONFIG_FB
@@ -3843,21 +3793,18 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 
 	rmi4_data->irq = gpio_to_irq(bdata->irq_gpio);
 
+	if (!exp_data.initialized) {
+		mutex_init(&exp_data.mutex);
+		INIT_LIST_HEAD(&exp_data.list);
+		exp_data.initialized = true;
+	}
+
 	retval = synaptics_rmi4_irq_enable(rmi4_data, true);
 	if (retval < 0) {
 		dev_err(&pdev->dev,
 				"%s: Failed to enable attention interrupt\n",
 				__func__);
-		rmi4_data->touch_status=false;
 		goto err_enable_irq;
-	}else{
-		rmi4_data->touch_status=true;
-	}
-
-	if (!exp_data.initialized) {
-		mutex_init(&exp_data.mutex);
-		INIT_LIST_HEAD(&exp_data.list);
-		exp_data.initialized = true;
 	}
 
 	exp_data.workqueue = create_singlethread_workqueue("dsx_exp_workqueue");
@@ -3874,10 +3821,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"%s: Failed to create debugfs directory, rc = %d\n",
 			__func__, retval);
-		rmi4_data->touch_status=false;
 		goto err_create_debugfs_dir;
-	}else{
-		rmi4_data->touch_status=true;
 	}
 
 	temp = debugfs_create_file("suspend", S_IRUSR | S_IWUSR, rmi4_data->dir,
@@ -3887,10 +3831,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"%s: Failed to create suspend debugfs file, rc = %d\n",
 			__func__, retval);
-		rmi4_data->touch_status=false;
 		goto err_create_debugfs_file;
-	}else{
-		rmi4_data->touch_status=true;
 	}
 
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {
@@ -3900,13 +3841,8 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 					"%s: Failed to create sysfs attributes\n",
 					__func__);
-		rmi4_data->touch_status=false;
 			goto err_sysfs;
-		}else{
-		rmi4_data->touch_status=true;
-		TouchStatus=rmi4_data->touch_status;
 		}
-		
 	}
 
 	synaptics_secure_touch_init(rmi4_data);
@@ -4532,7 +4468,7 @@ static int __init synaptics_rmi4_init(void)
 {
 	int retval;
 
-	retval = synaptics_rmi4_bus_init_v21();
+	retval = synaptics_rmi4_bus_init();
 	if (retval)
 		return retval;
 
@@ -4551,7 +4487,7 @@ static void __exit synaptics_rmi4_exit(void)
 {
 	platform_driver_unregister(&synaptics_rmi4_driver);
 
-	synaptics_rmi4_bus_exit_v21();
+	synaptics_rmi4_bus_exit();
 
 	return;
 }

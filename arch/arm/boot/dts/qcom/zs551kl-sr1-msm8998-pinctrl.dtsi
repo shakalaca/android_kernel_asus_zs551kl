@@ -737,7 +737,7 @@
 				};
 			};
 		};
-
+		//ASUS_BSP_Vibrator +++, AMP enable pin, gpio 60, mark_guo
 		vibrator_en {
 			vibrator_en_idle: vibrator_en_idle {
 				mux {
@@ -750,8 +750,8 @@
 					bias-no-pull;
 					output-low;
 				};
-		};
-
+			};
+			
 			vibrator_en_active: vibrator_en_active {
 				mux {
 					pins = "gpio60";
@@ -765,7 +765,7 @@
 				};
 			};
 		};
-
+		//ASUS_BSP_Vibrator ---
 		cdc_reset_ctrl {
 			cdc_reset_sleep: cdc_reset_sleep {
 				mux {
@@ -921,7 +921,7 @@
 			config {
 				pins = "gpio17","gpio18";
 				bias-pull-up; /* PULL UP*/
-				drive-strength = <8>; /* 8 MA */
+				drive-strength = <2>; /* 2 MA */
 			};
 		};
 
@@ -935,7 +935,7 @@
 			config {
 				pins = "gpio17","gpio18";
 				bias-pull-down; /* PULL DOWN */
-				drive-strength = <8>; /* 8 MA */
+				drive-strength = <2>; /* 2 MA */
 			};
 		};
 
@@ -949,7 +949,7 @@
 			config {
 				pins = "gpio19","gpio20";
 				bias-pull-up; /* PULL UP*/
-				drive-strength = <8>; /* 8 MA */
+				drive-strength = <2>; /* 2 MA */
 			};
 		};
 
@@ -963,7 +963,7 @@
 			config {
 				pins = "gpio19","gpio20";
 				bias-pull-down; /* PULL DOWN */
-				drive-strength = <8>; /* 8 MA */
+				drive-strength = <2>; /* 2 MA */
 			};
 		};
 
@@ -1024,7 +1024,7 @@
 		cam_sensor_mclk0_active: cam_sensor_mclk0_active {
 			/* MCLK0 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio13";
 				function = "cam_mclk";
 			};
@@ -1039,7 +1039,7 @@
 		cam_sensor_mclk0_suspend: cam_sensor_mclk0_suspend {
 			/* MCLK0 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio13";
 				function = "cam_mclk";
 			};
@@ -1065,7 +1065,8 @@
 			};
 		};
 
-		/*spi_6 {
+		/*
+		spi_6 {
 			spi_6_active: spi_6_active {
 				mux {
 					pins = "gpio41", "gpio42",
@@ -1095,7 +1096,8 @@
 					bias-disable;
 				};
 			};
-		};*/
+		};
+		*/
 
 		spi_7 {
 			spi_7_active: spi_7_active {
@@ -1269,7 +1271,6 @@
 			};
 		};
 // ASUS_BSP Deka --- "Bring up Pre-ISP RK1608"
-
 		spi_10 {
 			spi_10_active: spi_10_active {
 				mux {
@@ -1440,7 +1441,7 @@
 		cam_sensor_mclk1_active: cam_sensor_mclk1_active {
 			/* MCLK1 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio14";
 				function = "cam_mclk";
 			};
@@ -1455,7 +1456,7 @@
 		cam_sensor_mclk1_suspend: cam_sensor_mclk1_suspend {
 			/* MCLK1 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio14";
 				function = "cam_mclk";
 			};
@@ -1466,6 +1467,7 @@
 				drive-strength = <2>; /* 2 MA */
 			};
 		};
+
 
 		cam_sensor_rear2_active: cam_sensor_rear2_active {
 			/* RESET, STANDBY */
@@ -1603,7 +1605,7 @@
 		cam_sensor_mclk2_active: cam_sensor_mclk2_active {
 			/* MCLK1 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio15";
 				function = "cam_mclk";
 			};
@@ -1618,7 +1620,7 @@
 		cam_sensor_mclk2_suspend: cam_sensor_mclk2_suspend {
 			/* MCLK1 */
 			mux {
-				/* CLK, DATA */
+				/* CLK */
 				pins = "gpio15";
 				function = "cam_mclk";
 			};
@@ -1643,7 +1645,7 @@
 				drive-strength = <2>; /* 2 MA */
 			};
 		};
-		
+
 		blsp2_uart1_active: blsp2_uart1_active {
 			mux {
 				pins = "gpio53", "gpio54", "gpio55", "gpio56";
@@ -1710,36 +1712,6 @@
 			};
 		};
 
-		/* ASUS_BSP +++ ShawnHuang cm36656 */
-		cm36656_int_pin {
-			cm36656_default: cm36656_default {
-				mux {
-					pins = "gpio120";
-					function = "gpio";
-				};
-
-				config {
-					pins = "gpio120";
-					bias-pull-up;
-					drive-strength = <6>;
-				};
-			};
-
-			cm36656_sleep: cm36656_sleep {
-				mux {
-					pins = "gpio120";
-					function = "gpio";
-				};
-
-				config {
-					pins = "gpio120";
-					bias-pull-up;
-					drive-strength = <6>;
-				};
-			};
-		};
-		/* ASUS_BSP --- ShawnHuang cm36656 */
-
 		/* ASUS_BSP +++ Vincent_Ho Laser Elisa */
 		laser_int_pin {
 			laser_default: laser_default {
@@ -1771,6 +1743,37 @@
 		/* ASUS_BSP --- Vincent_Ho Laser Elisa */
 
 
+		/* ASUS_BSP +++ ShawnHuang cm36656 */
+		cm36656_int_pin {
+			cm36656_default: cm36656_default {
+				mux {
+					pins = "gpio120";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio120";
+					bias-pull-up;
+					drive-strength = <6>;
+				};
+			};
+
+			cm36656_sleep: cm36656_sleep {
+				mux {
+					pins = "gpio120";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio120";
+					bias-pull-up;
+					drive-strength = <6>;
+				};
+			};
+		};
+		/* ASUS_BSP --- ShawnHuang cm36656 */
+
+		/* ASUS_BSP +++ ShawnHuang hall sensor */
 		hall_int_pin {
 			gpio_hall_active: gpio_hall_active {
 				mux {
@@ -1798,6 +1801,7 @@
 				};
 			};
 		};
+		/* ASUS_BSP --- ShawnHuang hall sensor */
 
 		pmx_mdss: pmx_mdss {
 			mdss_dsi_active: mdss_dsi_active {
@@ -1903,7 +1907,8 @@
 				drive-strength = <2>;
 			};
 		};
-
+/*	ASUS_BSP Freddy+++ remove gpio34 because gpio34 become voL key */
+/*
 		mdss_dp_hpd_active: mdss_dp_hpd_active {
 			mux {
 				pins = "gpio34";
@@ -1929,7 +1934,7 @@
 				drive-strength = <2>;
 			};
 		};
-
+*/
 		blsp2_uart3_active: blsp2_uart3_active {
 			mux {
 				pins = "gpio49", "gpio50", "gpio51", "gpio52";
@@ -2035,29 +2040,16 @@
 		ts_mux {
 			ts_active: ts_active {
 				mux {
-					pins = "gpio129", "gpio123";
+					pins = "gpio89", "gpio125";
 					function = "gpio";
 				};
 
 				config {
-					pins = "gpio129", "gpio123";
+					pins = "gpio89", "gpio125";
 					drive-strength = <16>;
 					bias-pull-up;
 				};
 			};
-			ts_suspend: ts_suspend {
-				mux {
-					pins = "gpio129";
-					function = "gpio";
-				};
-
-				config {
-					pins = "gpio129";
-					drive-strength = <2>;
-					bias-pull-down;
-				};
-			};
-
 
 			ts_reset_suspend: ts_reset_suspend {
 				mux {
@@ -2206,7 +2198,8 @@
 			};
 
 		};
-		/*  ASUS_BSP Eric +++++  */
+
+		/*  ASUS_BSP Freddy +++++  */
 		tlmm_gpio_key {
 			gpio_key_active: gpio_key_active {
 				mux {
@@ -2234,20 +2227,33 @@
 				};
 			};
 		};
-		/*  ASUS_BSP Eric ----  */
+		/*  ASUS_BSP Freddy ----  */
+
 		led_enable: led_enable {
 			mux {
 				pins = "gpio21";
-				drive_strength = <16>;
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio21";
+				drive_strength = <2>;
 				output-high;
+				bias-disable;
 			};
 		};
 
 		led_disable: led_disable {
 			mux {
 				pins = "gpio21";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio21";
 				drive_strength = <2>;
 				output-low;
+				bias-disable;
 			};
 		};
 
@@ -2290,7 +2296,8 @@
 			};
 		};
 
-
+/*	ASUS_BSP Freddy+++ remove gpio34 because gpio34 become voL key */
+/*
 		mdss_hdmi_hpd_active: mdss_hdmi_hpd_active {
 			mux {
 				pins = "gpio34";
@@ -2316,7 +2323,7 @@
 				drive-strength = <2>;
 			};
 		};
-
+*/
 		mdss_hdmi_ddc_active: mdss_hdmi_ddc_active {
 			mux {
 				pins = "gpio32", "gpio33";
@@ -2821,7 +2828,7 @@
 					pins = "gpio64";
 					drive-strength = <2>;   /* 2 mA */
 					bias-pull-down;         /* PULL DOWN */
-					output-low;
+					input-enable;
 				};
 			};
 
@@ -2851,7 +2858,7 @@
 					pins = "gpio65";
 					drive-strength = <2>;   /* 2 mA */
 					bias-pull-down;         /* PULL DOWN */
-					output-low;
+					input-enable;
 				};
 			};
 
@@ -2881,7 +2888,7 @@
 					pins = "gpio66";
 					drive-strength = <2>;   /* 2 mA */
 					bias-pull-down;         /* PULL DOWN */
-					output-low;
+					input-enable;
 				};
 			};
 
@@ -2911,7 +2918,7 @@
 					pins = "gpio67";
 					drive-strength = <2>;   /* 2 mA */
 					bias-pull-down;         /* PULL DOWN */
-					output-low;
+					input-enable;
 				};
 			};
 
@@ -2940,7 +2947,7 @@
 					pins = "gpio68";
 					drive-strength = <2>;   /* 2 mA */
 					bias-pull-down;         /* PULL DOWN */
-					output-low;
+					input-enable;
 				};
 			};
 

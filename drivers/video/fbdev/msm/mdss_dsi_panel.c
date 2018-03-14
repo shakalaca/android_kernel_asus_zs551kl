@@ -35,17 +35,6 @@
 #define DEFAULT_MDP_TRANSFER_TIME 14000
 
 #define VSYNC_DELAY msecs_to_jiffies(17)
-extern int asus_rmi4_suspend(void);
-extern int asus_rmi4_resume(void);
-
-
-//WeiYu +++ predict suspend soc
-#ifdef CONFIG_QPNP_FG_SUSPEND_PREDICT
-extern void bms_modify_soc_early_suspend(void);
-extern void bms_modify_soc_late_resume(void);
-#endif
-//WeiYu --- predict suspend soc
-
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
@@ -289,6 +278,11 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 	cmdreq.rlen = 0;
 	cmdreq.cb = NULL;
 
+	if (ctrl->bklt_dcs_op_mode == DSI_HS_MODE)
+		cmdreq.flags |= CMD_REQ_HS_MODE;
+	else
+		cmdreq.flags |= CMD_REQ_LP_MODE;
+
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
@@ -313,6 +307,15 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 			goto rst_gpio_err;
 		}
 	}
+	if (gpio_is_valid(ctrl_pdata->avdd_en_gpio)) {
+		rc = gpio_request(ctrl_pdata->avdd_en_gpio,
+						"avdd_enable");
+		if (rc) {
+			pr_err("request avdd_en gpio failed, rc=%d\n",
+				       rc);
+			goto avdd_en_gpio_err;
+		}
+	}
 	if (gpio_is_valid(ctrl_pdata->lcd_mode_sel_gpio)) {
 		rc = gpio_request(ctrl_pdata->lcd_mode_sel_gpio, "mode_sel");
 		if (rc) {
@@ -325,6 +328,9 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 	return rc;
 
 lcd_mode_sel_gpio_err:
+	if (gpio_is_valid(ctrl_pdata->avdd_en_gpio))
+		gpio_free(ctrl_pdata->avdd_en_gpio);
+avdd_en_gpio_err:
 	gpio_free(ctrl_pdata->rst_gpio);
 rst_gpio_err:
 	if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
@@ -477,6 +483,21 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 				if (pdata->panel_info.rst_seq[++i])
 					usleep_range(pinfo->rst_seq[i] * 1000, pinfo->rst_seq[i] * 1000);
 			}
+
+			if (gpio_is_valid(ctrl_pdata->avdd_en_gpio)) {
+				if (ctrl_pdata->avdd_en_gpio_invert) {
+					rc = gpio_direction_output(
+						ctrl_pdata->avdd_en_gpio, 0);
+				} else {
+					rc = gpio_direction_output(
+						ctrl_pdata->avdd_en_gpio, 1);
+				}
+				if (rc) {
+					pr_err("%s: unable to set dir for avdd_en gpio\n",
+						__func__);
+					goto exit;
+				}
+			}
 		}
 
 		if (gpio_is_valid(ctrl_pdata->lcd_mode_sel_gpio)) {
@@ -505,6 +526,14 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
 	} else {
+		if (gpio_is_valid(ctrl_pdata->avdd_en_gpio)) {
+			if (ctrl_pdata->avdd_en_gpio_invert)
+				gpio_set_value((ctrl_pdata->avdd_en_gpio), 1);
+			else
+				gpio_set_value((ctrl_pdata->avdd_en_gpio), 0);
+
+			gpio_free(ctrl_pdata->avdd_en_gpio);
+		}
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
 			gpio_free(ctrl_pdata->disp_en_gpio);
@@ -977,7 +1006,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	}
 
 	pinfo = &pdata->panel_info;
-	//asus_rmi4_resume();
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
@@ -997,6 +1025,7 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	pr_debug("%s: ndx=%d cmd_cnt=%d\n", __func__,
 				ctrl->ndx, on_cmds->cmd_cnt);
+
 	if (on_cmds->cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, on_cmds, CMD_REQ_COMMIT);
 
@@ -1009,13 +1038,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	/* Ensure low persistence mode is set as before */
 	mdss_dsi_panel_apply_display_setting(pdata, pinfo->persist_mode);
-
-
-	//WeiYu +++ predict suspend soc
-#ifdef CONFIG_QPNP_FG_SUSPEND_PREDICT
-	bms_modify_soc_late_resume();
-#endif
-
 
 end:
 	pr_debug("%s:-\n", __func__);
@@ -1093,14 +1115,7 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 		mdss_dba_utils_video_off(pinfo->dba_data);
 		mdss_dba_utils_hdcp_enable(pinfo->dba_data, false);
 	}
-	/*mdelay(30);
-	asus_rmi4_suspend();*/
 
-	//WeiYu +++ predict suspend soc
-#ifdef CONFIG_QPNP_FG_SUSPEND_PREDICT
-	bms_modify_soc_early_suspend();
-#endif
-	
 end:
 	pr_debug("%s:-\n", __func__);
 	pr_err("[Display] %s: ---\n", __func__);
@@ -2331,11 +2346,12 @@ static bool mdss_dsi_cmp_panel_reg_v2(struct mdss_dsi_ctrl_pdata *ctrl)
 				break;
 		}
 
-		if (i == len) 
+		if (i == len)
 			return true;
 		group += len;
 	}
-		return false;
+
+	return false;
 }
 
 static int mdss_dsi_gen_read_status(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
@@ -2929,6 +2945,13 @@ int mdss_panel_parse_bl_settings(struct device_node *np,
 			}
 		} else if (!strcmp(data, "bl_ctrl_dcs")) {
 			ctrl_pdata->bklt_ctrl = BL_DCS_CMD;
+			data = of_get_property(np,
+				"qcom,mdss-dsi-bl-dcs-command-state", NULL);
+			if (data && !strcmp(data, "dsi_hs_mode"))
+				ctrl_pdata->bklt_dcs_op_mode = DSI_HS_MODE;
+			else
+				ctrl_pdata->bklt_dcs_op_mode = DSI_LP_MODE;
+
 			pr_debug("%s: Configured DCS_CMD bklt ctrl\n",
 								__func__);
 		}
@@ -3420,13 +3443,13 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
 		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
 
-// ASUS BSP Display, add for panel bklt issue +++
+	// ASUS BSP Display, add for panel bklt issue +++
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->low_bklt_cmds,
 		"qcom,mdss-dsi-low-bklt-command", "qcom,mdss-dsi-lp-command-state");
 
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->high_bklt_cmds,
 		"qcom,mdss-dsi-high-bklt-command", "qcom,mdss-dsi-lp-command-state");
-// ASUS BSP Display, add for panel bklt issue ---
+	// ASUS BSP Display, add for panel bklt issue ---
 
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->hbm_on_cmds,
 		"qcom,mdss-dsi-hbm-on-command", "qcom,mdss-dsi-lp-command-state");

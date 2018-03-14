@@ -50,7 +50,8 @@ static ssize_t power_supply_show_property(struct device *dev,
 		"TYPEC", "TYPEC_UFP", "TYPEC_DFP"
 	};
 	static char *status_text[] = {
-		"Unknown", "Charging", "Discharging", "Not charging", "Full", "Quick charging", "Not Quick charging"
+		"Unknown", "Charging", "Discharging", "Not charging", "Full",
+		"Quick charging", "Not Quick charging", "Thermal Alert", "Thermal Alert No Cable"
 	};
 	static char *charge_type[] = {
 		"Unknown", "N/A", "Trickle", "Fast",
@@ -261,6 +262,8 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(low_power),
 	POWER_SUPPLY_ATTR(temp_cool),
 	POWER_SUPPLY_ATTR(temp_warm),
+	POWER_SUPPLY_ATTR(temp_cold),
+	POWER_SUPPLY_ATTR(temp_hot),
 	POWER_SUPPLY_ATTR(system_temp_level),
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
@@ -314,6 +317,12 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(hw_current_max),
 	POWER_SUPPLY_ATTR(real_type),
 	POWER_SUPPLY_ATTR(pr_swap),
+	POWER_SUPPLY_ATTR(cc_step),
+	POWER_SUPPLY_ATTR(cc_step_sel),
+	POWER_SUPPLY_ATTR(sw_jeita_enabled),
+	POWER_SUPPLY_ATTR(pd_voltage_max),
+	POWER_SUPPLY_ATTR(pd_voltage_min),
+	POWER_SUPPLY_ATTR(sdp_current_max),
 	//[+++]Add the interface for charging debug apk
 	POWER_SUPPLY_ATTR(asus_apsd_result),
 	POWER_SUPPLY_ATTR(asus_adapter_id),

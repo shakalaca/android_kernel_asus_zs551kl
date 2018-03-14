@@ -379,7 +379,9 @@ static struct dev_config aux_pcm_tx_cfg[] = {
 };
 
 static int msm_vi_feed_tx_ch = 2;
-static const char *const slim_rx_ch_text[] = {"One", "Two"};
+static const char *const slim_rx_ch_text[] = {"One", "Two", "Three", "Four",
+						"Five", "Six", "Seven",
+						"Eight"};
 static const char *const slim_tx_ch_text[] = {"One", "Two", "Three", "Four",
 						"Five", "Six", "Seven",
 						"Eight"};
@@ -414,7 +416,8 @@ static char const *tdm_sample_rate_text[] = {"KHZ_8", "KHZ_16", "KHZ_32",
 static const char *const auxpcm_rate_text[] = {"KHZ_8", "KHZ_16"};
 static char const *mi2s_rate_text[] = {"KHZ_8", "KHZ_16",
 				      "KHZ_32", "KHZ_44P1", "KHZ_48",
-				      "KHZ_96", "KHZ_192"};
+				      "KHZ_88P2", "KHZ_96", "KHZ_176P4",
+				      "KHZ_192"};
 static const char *const mi2s_ch_text[] = {"One", "Two", "Three", "Four",
 					   "Five", "Six", "Seven",
 					   "Eight"};
@@ -519,6 +522,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.key_code[7] = 0,
 	.linein_th = 5000,
 	.moisture_en = true,
+	.mbhc_micbias = MIC_BIAS_2,
 	.anc_micbias = MIC_BIAS_2,
 	.enable_anc_mic_detect = false,
 };
@@ -535,6 +539,13 @@ static struct snd_soc_dapm_route wcd_audio_paths[] = {
 	{"MIC BIAS2", NULL, "MCLK"},
 	{"MIC BIAS3", NULL, "MCLK"},
 	{"MIC BIAS4", NULL, "MCLK"},
+};
+
+static u32 mi2s_ebit_clk[MI2S_MAX] = {
+	Q6AFE_LPASS_CLK_ID_PRI_MI2S_EBIT,
+	Q6AFE_LPASS_CLK_ID_SEC_MI2S_EBIT,
+	Q6AFE_LPASS_CLK_ID_TER_MI2S_EBIT,
+	Q6AFE_LPASS_CLK_ID_QUAD_MI2S_EBIT,
 };
 
 static struct afe_clk_set mi2s_clk[MI2S_MAX] = {
@@ -2201,11 +2212,17 @@ static int mi2s_get_sample_rate_val(int sample_rate)
 	case SAMPLING_RATE_48KHZ:
 		sample_rate_val = 4;
 		break;
-	case SAMPLING_RATE_96KHZ:
+	case SAMPLING_RATE_88P2KHZ:
 		sample_rate_val = 5;
 		break;
-	case SAMPLING_RATE_192KHZ:
+	case SAMPLING_RATE_96KHZ:
 		sample_rate_val = 6;
+		break;
+	case SAMPLING_RATE_176P4KHZ:
+		sample_rate_val = 7;
+		break;
+	case SAMPLING_RATE_192KHZ:
+		sample_rate_val = 8;
 		break;
 	default:
 		sample_rate_val = 4;
@@ -2235,9 +2252,15 @@ static int mi2s_get_sample_rate(int value)
 		sample_rate = SAMPLING_RATE_48KHZ;
 		break;
 	case 5:
-		sample_rate = SAMPLING_RATE_96KHZ;
+		sample_rate = SAMPLING_RATE_88P2KHZ;
 		break;
 	case 6:
+		sample_rate = SAMPLING_RATE_96KHZ;
+		break;
+	case 7:
+		sample_rate = SAMPLING_RATE_176P4KHZ;
+		break;
+	case 8:
 		sample_rate = SAMPLING_RATE_192KHZ;
 		break;
 	default:
@@ -2834,6 +2857,7 @@ static int msm_mclk_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
+
 /*
 static int msm_hifi_ctrl_event(struct snd_soc_dapm_widget *w,
 			       struct snd_kcontrol *k, int event)
@@ -2868,6 +2892,7 @@ static int msm_hifi_ctrl_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 */
+
 static const struct snd_soc_dapm_widget msm_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SUPPLY("MCLK",  SND_SOC_NOPM, 0, 0,
@@ -4114,9 +4139,6 @@ static void update_mi2s_clk_val(int dai_id, int stream)
 		mi2s_clk[dai_id].clk_freq_in_hz =
 		    mi2s_tx_cfg[dai_id].sample_rate * 2 * bit_per_sample;
 	}
-
-	if (!mi2s_intf_conf[dai_id].msm_is_mi2s_master)
-		mi2s_clk[dai_id].clk_freq_in_hz = 0;
 }
 
 static int msm_mi2s_set_sclk(struct snd_pcm_substream *substream, bool enable)
@@ -4182,6 +4204,11 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 	 */
 	mutex_lock(&mi2s_intf_conf[index].lock);
 	if (++mi2s_intf_conf[index].ref_cnt == 1) {
+		/* Check if msm needs to provide the clock to the interface */
+		if (!mi2s_intf_conf[index].msm_is_mi2s_master) {
+			fmt = SND_SOC_DAIFMT_CBM_CFM;
+			mi2s_clk[index].clk_id = mi2s_ebit_clk[index];
+		}
 		ret = msm_mi2s_set_sclk(substream, true);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(rtd->card->dev,
@@ -4201,9 +4228,6 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 			ret = -EINVAL;
 			goto clk_off;
 		}
-		/* Check if msm needs to provide the clock to the interface */
-		if (!mi2s_intf_conf[index].msm_is_mi2s_master)
-			fmt = SND_SOC_DAIFMT_CBM_CFM;
 		ret = snd_soc_dai_set_fmt(cpu_dai, fmt);
 		if (IS_ERR_VALUE(ret)) {
 			pr_err("%s: set fmt cpu dai failed for MI2S (%d), err:%d\n",
@@ -4252,7 +4276,6 @@ static void msm_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 		if (ret < 0)
 			pr_err("%s:clock disable failed for MI2S (%d); ret=%d\n",
 				__func__, index, ret);
-
 	}
 	mutex_unlock(&mi2s_intf_conf[index].lock);
 }
@@ -4981,12 +5004,13 @@ static struct snd_soc_dai_link msm_common_dai_links[] = {
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA15,
 	},
 	{
-		.name = MSM_DAILINK_NAME(Compress9),
-		.stream_name = "Compress9",
+		.name = MSM_DAILINK_NAME(ULL_NOIRQ_2),
+		.stream_name = "MM_NOIRQ_2",
 		.cpu_dai_name = "MultiMedia16",
-		.platform_name = "msm-compress-dsp",
+		.platform_name = "msm-pcm-dsp-noirq",
 		.dynamic = 1,
 		.dpcm_playback = 1,
+		.dpcm_capture = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
 			 SND_SOC_DPCM_TRIGGER_POST},
 		.codec_dai_name = "snd-soc-dummy-dai",
@@ -5171,6 +5195,122 @@ static struct snd_soc_dai_link msm_common_misc_fe_dai_links[] = {
 		.ignore_pmdown_time = 1,
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
+	},
+	{
+		.name = MSM_DAILINK_NAME(Transcode Loopback Playback),
+		.stream_name = "Transcode Loopback Playback",
+		.cpu_dai_name = "MultiMedia26",
+		.platform_name = "msm-transcode-loopback",
+		.dynamic = 1,
+		.dpcm_playback = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			 SND_SOC_DPCM_TRIGGER_POST},
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		 /* this dainlink has playback support */
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA26,
+	},
+	{
+		.name = MSM_DAILINK_NAME(Transcode Loopback Capture),
+		.stream_name = "Transcode Loopback Capture",
+		.cpu_dai_name = "MultiMedia27",
+		.platform_name = "msm-transcode-loopback",
+		.dynamic = 1,
+		.dpcm_capture = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			 SND_SOC_DPCM_TRIGGER_POST},
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA27,
+	},
+	{
+		.name = "MultiMedia21",
+		.stream_name = "MultiMedia21",
+		.cpu_dai_name = "MultiMedia21",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE,
+		.dpcm_playback = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA21,
+	},
+	{
+		.name = "MultiMedia22",
+		.stream_name = "MultiMedia22",
+		.cpu_dai_name = "MultiMedia22",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE,
+		.dpcm_playback = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA22,
+	},
+	{
+		.name = "MultiMedia23",
+		.stream_name = "MultiMedia23",
+		.cpu_dai_name = "MultiMedia23",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE,
+		.dpcm_playback = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA23,
+	},
+	{
+		.name = "MultiMedia24",
+		.stream_name = "MultiMedia24",
+		.cpu_dai_name = "MultiMedia24",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE,
+		.dpcm_playback = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA24,
+	},
+	{
+		.name = "MultiMedia25",
+		.stream_name = "MultiMedia25",
+		.cpu_dai_name = "MultiMedia25",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.async_ops = ASYNC_DPCM_SND_SOC_PREPARE,
+		.dpcm_playback = 1,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		/* this dainlink has playback support */
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA25,
 	},
 };
 
@@ -5854,7 +5994,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 		.cpu_dai_name = "msm-dai-q6-mi2s.0",
 		.platform_name = "msm-pcm-routing",
 		.codec_name = "tas2557s.6-004c",
-		.codec_dai_name = "tas2557 Stereo ASI1",		
+		.codec_dai_name = "tas2557 Stereo ASI1",
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.be_id = MSM_BACKEND_DAI_PRI_MI2S_RX,
@@ -7005,10 +7145,9 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 				"qcom,hph-en0-gpio",
 				pdev->dev.of_node->full_name);
 		}
-		
+
 		pdata->prim_mi2s_gpio_p = of_parse_phandle(pdev->dev.of_node,
 					"qcom,prim-mi2s-gpios", 0);
-		
 	}
 
 	ret = of_property_read_string(pdev->dev.of_node,

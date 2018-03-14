@@ -289,19 +289,11 @@ int synaptics_dsx_get_dt_coords(struct device *dev, char *name,
 		pdata->panel_miny = coords[1];
 		pdata->panel_maxx = coords[2];
 		pdata->panel_maxy = coords[3];
-		printk("[synaptics] %s panel_mix = %d, panel_miny = %d\n", __func__, pdata->panel_minx,
-		                                                                     pdata->panel_miny);
-		printk("[synaptics] %s panel_maxx = %d, panel_maxy = %d\n", __func__, pdata->panel_maxx,
-		                                                                     pdata->panel_maxy);                                                                 
 	} else if (strcmp(name, "synaptics,display-coords") == 0) {
 		pdata->disp_minx = coords[0];
 		pdata->disp_miny = coords[1];
 		pdata->disp_maxx = coords[2];
 		pdata->disp_maxy = coords[3];
-		printk("[synaptics] %s disp_minx = %d, disp_miny = %d\n", __func__, pdata->disp_minx,
-		                                                                     pdata->disp_miny);
-		printk("[synaptics] %s disp_maxx = %d, disp_maxy = %d\n", __func__, pdata->disp_maxx,
-		                                                                     pdata->disp_maxy);                                                                  
 	} else {
 		dev_err(dev, "unsupported property %s\n", name);
 		return -EINVAL;
@@ -519,19 +511,19 @@ static struct i2c_driver synaptics_rmi4_i2c_driver = {
 	.id_table = synaptics_rmi4_id_table,
 };
 
-int synaptics_rmi4_bus_init_v21(void)
+int synaptics_rmi4_bus_init(void)
 {
 	return i2c_add_driver(&synaptics_rmi4_i2c_driver);
 }
-EXPORT_SYMBOL(synaptics_rmi4_bus_init_v21);
+EXPORT_SYMBOL(synaptics_rmi4_bus_init);
 
-void synaptics_rmi4_bus_exit_v21(void)
+void synaptics_rmi4_bus_exit(void)
 {
 	i2c_del_driver(&synaptics_rmi4_i2c_driver);
 
 	return;
 }
-EXPORT_SYMBOL(synaptics_rmi4_bus_exit_v21);
+EXPORT_SYMBOL(synaptics_rmi4_bus_exit);
 
 MODULE_AUTHOR("Synaptics, Inc.");
 MODULE_DESCRIPTION("Synaptics DSX I2C Bus Support Module");

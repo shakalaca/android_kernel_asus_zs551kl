@@ -377,6 +377,7 @@ out_micb_en:
 			/* Disable micbias, pullup & enable cs */
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
 		mutex_unlock(&mbhc->hphl_pa_lock);
+		clear_bit(WCD_MBHC_ANC0_OFF_ACK, &mbhc->hph_anc_state);
 		break;
 	case WCD_EVENT_PRE_HPHR_PA_OFF:
 		mutex_lock(&mbhc->hphr_pa_lock);
@@ -394,6 +395,7 @@ out_micb_en:
 			/* Disable micbias, pullup & enable cs */
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
 		mutex_unlock(&mbhc->hphr_pa_lock);
+		clear_bit(WCD_MBHC_ANC1_OFF_ACK, &mbhc->hph_anc_state);
 		break;
 	case WCD_EVENT_PRE_HPHL_PA_ON:
 		set_bit(WCD_MBHC_EVENT_PA_HPHL, &mbhc->event_state);
@@ -511,6 +513,25 @@ static void wcd_mbhc_clr_and_turnon_hph_padac(struct wcd_mbhc *mbhc)
 			 __func__);
 		usleep_range(wg_time * 1000, wg_time * 1000 + 50);
 	}
+
+	if (test_and_clear_bit(WCD_MBHC_ANC0_OFF_ACK,
+				&mbhc->hph_anc_state)) {
+		usleep_range(20000, 20100);
+		pr_debug("%s: HPHL ANC clear flag and enable ANC_EN\n",
+			__func__);
+		if (mbhc->mbhc_cb->update_anc_state)
+			mbhc->mbhc_cb->update_anc_state(mbhc->codec, true, 0);
+	}
+
+	if (test_and_clear_bit(WCD_MBHC_ANC1_OFF_ACK,
+				&mbhc->hph_anc_state)) {
+		usleep_range(20000, 20100);
+		pr_debug("%s: HPHR ANC clear flag and enable ANC_EN\n",
+			__func__);
+		if (mbhc->mbhc_cb->update_anc_state)
+			mbhc->mbhc_cb->update_anc_state(mbhc->codec, true, 1);
+	}
+
 }
 
 static bool wcd_mbhc_is_hph_pa_on(struct wcd_mbhc *mbhc)
@@ -542,6 +563,20 @@ static void wcd_mbhc_set_and_turnoff_hph_padac(struct wcd_mbhc *mbhc)
 	}
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_HPH_PA_EN, 0);
 	usleep_range(wg_time * 1000, wg_time * 1000 + 50);
+
+
+	if (mbhc->mbhc_cb->is_anc_on && mbhc->mbhc_cb->is_anc_on(mbhc)) {
+		usleep_range(20000, 20100);
+		pr_debug("%s ANC is on, setting ANC_OFF_ACK\n", __func__);
+		set_bit(WCD_MBHC_ANC0_OFF_ACK, &mbhc->hph_anc_state);
+		set_bit(WCD_MBHC_ANC1_OFF_ACK, &mbhc->hph_anc_state);
+		if (mbhc->mbhc_cb->update_anc_state) {
+			mbhc->mbhc_cb->update_anc_state(mbhc->codec, false, 0);
+			mbhc->mbhc_cb->update_anc_state(mbhc->codec, false, 1);
+		} else {
+			pr_debug("%s ANC is off\n", __func__);
+		}
+	}
 }
 
 int wcd_mbhc_get_impedance(struct wcd_mbhc *mbhc, uint32_t *zl,
@@ -611,15 +646,12 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 			mbhc->buttons_pressed &=
 				~WCD_MBHC_JACK_BUTTON_MASK;
 		}
-		//if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
-		//	mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
+
 		if (mbhc->micbias_enable) {
 			if (mbhc->mbhc_cb->mbhc_micbias_control)
-			{
 				mbhc->mbhc_cb->mbhc_micbias_control(
 						codec, MIC_BIAS_2,
 						MICB_DISABLE);
-			}
 			if (mbhc->mbhc_cb->mbhc_micb_ctrl_thr_mic)
 				mbhc->mbhc_cb->mbhc_micb_ctrl_thr_mic(
 						codec,
@@ -651,15 +683,13 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		    (mbhc->current_plug == MBHC_PLUG_TYPE_HIGH_HPH ||
 		    jack_type == SND_JACK_LINEOUT) &&
 		    (mbhc->hph_status && mbhc->hph_status != jack_type)) {
-			//if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
-			//	mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2, MICB_PULLUP_DISABLE);//Rice
-			if (mbhc->micbias_enable) {
+
+			if (mbhc->micbias_enable &&
+			    mbhc->hph_status == SND_JACK_HEADSET) {
 				if (mbhc->mbhc_cb->mbhc_micbias_control)
-				{	
 					mbhc->mbhc_cb->mbhc_micbias_control(
 						codec, MIC_BIAS_2,
 						MICB_DISABLE);
-				}
 				if (mbhc->mbhc_cb->mbhc_micb_ctrl_thr_mic)
 					mbhc->mbhc_cb->mbhc_micb_ctrl_thr_mic(
 						codec,
@@ -1431,15 +1461,16 @@ exit:
 	if (mbhc->mbhc_cb->mbhc_micbias_control &&
 	    !mbhc->micbias_enable)
 	{
-	    mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
-						    MICB_DISABLE);
-	    if (plug_type == MBHC_PLUG_TYPE_HEADSET)
-            {
 		mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
+						    MICB_DISABLE);
+		if (plug_type == MBHC_PLUG_TYPE_HEADSET)
+		{
+			mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
 						    MICB_ENABLE);
-                mbhc->micbias_enable = true;
-            }
+			mbhc->micbias_enable = true;
+		}
 	}
+
 	/*
 	 * If plug type is corrected from special headset to headphone,
 	 * clear the micbias enable flag, set micbias back to 1.8V and
@@ -1507,10 +1538,8 @@ static void wcd_mbhc_detect_plug_type(struct wcd_mbhc *mbhc)
 		mbhc->mbhc_cb->set_cap_mode(codec, micbias1, true);
 
 	if (mbhc->mbhc_cb->mbhc_micbias_control)
-        {
 		mbhc->mbhc_cb->mbhc_micbias_control(codec, MIC_BIAS_2,
 						    MICB_ENABLE);
-        }
 	else
 		wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_MB);
 
@@ -1729,6 +1758,7 @@ static int wcd_mbhc_get_button_mask(struct wcd_mbhc *mbhc)
 
 	btn = mbhc->mbhc_cb->map_btn_code_to_num(mbhc->codec);
 	pr_debug("%s: button mask = %d\n", __func__, btn);
+
 	switch (btn) {
 	case 0:
 		mask = SND_JACK_BTN_0;

@@ -62,14 +62,6 @@ static void scm_disable_sdi(void);
  * There is no API from TZ to re-enable the registers.
  * So the SDI cannot be re-enabled when it already by-passed.
 */
- 
-#ifdef ASUS_SHIP_BUILD
-static int download_mode = 0;
-#else
-static int download_mode = 1;
-#endif
-
-static struct kobject dload_kobj;
 
 #ifdef CONFIG_QCOM_DLOAD_MODE
 #define EDL_MODE_PROP "qcom,msm-imem-emergency_download_mode"
@@ -80,7 +72,11 @@ static struct kobject dload_kobj;
 
 static int in_panic;
 static int dload_type = SCM_DLOAD_FULLDUMP;
-//static int download_mode = 1;
+#ifdef ASUS_SHIP_BUILD
+static int download_mode = 0;
+#else
+static int download_mode = 1;
+#endif
 static struct kobject dload_kobj;
 static void *dload_mode_addr, *dload_type_addr;
 static bool dload_mode_enabled;
@@ -280,7 +276,7 @@ static void halt_spmi_pmic_arbiter(void)
 
 static void msm_restart_prepare(const char *cmd)
 {
-    ulong *printk_buffer_slot2_addr;
+        ulong *printk_buffer_slot2_addr;
 	bool need_warm_reset = false;
 
 #ifdef CONFIG_QCOM_DLOAD_MODE
@@ -424,6 +420,7 @@ static void do_msm_restart(enum reboot_mode reboot_mode, const char *cmd)
 		msm_trigger_wdog_bite();
 #endif
 
+	scm_disable_sdi();
 	halt_spmi_pmic_arbiter();
 	deassert_ps_hold();
 

@@ -58,6 +58,7 @@ int audio_mode = -1;
 int mode = -1;
 //Jacob cherry pick ZE500KL change ---
 int audio_24bit = 0;
+
 static bool callbacks_are_equal(struct audio_cal_callbacks *callback1,
 				struct audio_cal_callbacks *callback2)
 {
@@ -470,7 +471,7 @@ static long audio_cal_shared_ioctl(struct file *file, unsigned int cmd,
 */
 		imp_val->ZL = g_ZL;
 		imp_val->ZR = g_ZR;
-		printk("%s: RR = %d , LL = %d\n", __func__ , imp_val->ZR , imp_val->ZL);
+		printk("%s: RR = %d , LL = %d\n", __func__, imp_val->ZR ,imp_val->ZL);
 		if (copy_to_user((void *)arg, imp_val,
 				sizeof(struct headset_imp_val))) {
 			//pr_err("%s: Could not copy imp_val to user\n", __func__);
@@ -483,25 +484,24 @@ static long audio_cal_shared_ioctl(struct file *file, unsigned int cmd,
 	/* ASUS_BSP Eric --- */
 	//Jacob cherry pick ZE500KL change +++
 	case AUDIO_SET_MODE:
-        mutex_lock(&audio_cal.cal_mutex[SET_MODE_TYPE]);
-        if(copy_from_user(&mode, (void *)arg,sizeof(mode))) {
-            pr_err("%s: Could not copy lmode to user\n", __func__);
-            ret = -EFAULT;			
-        }
-		
-        audio_mode = mode;
-        printk("%s: Audio mode status:audio_mode=%d\n",__func__,audio_mode);
-        mutex_unlock(&audio_cal.cal_mutex[SET_MODE_TYPE]);
-        goto done;
+		mutex_lock(&audio_cal.cal_mutex[SET_MODE_TYPE]);
+		if (copy_from_user(&mode, (void *)arg, sizeof(mode))) {
+			pr_err("%s: Could not copy lmode to user\n", __func__);
+			ret = -EFAULT;
+		}
+		audio_mode = mode;
+		printk("%s: Audio mode status:audio_mode=%d\n", __func__, audio_mode);
+		mutex_unlock(&audio_cal.cal_mutex[SET_MODE_TYPE]);
+		goto done;
 	//Jacob cherry pick ZE500KL change ---
 //Rice
 	case AUDIO_SET_FORMAT:
         mutex_lock(&audio_cal.cal_mutex[SET_FORMAT_TYPE]);
-        if(copy_from_user(&audio_24bit, (void *)arg,sizeof(audio_24bit))) {
+        if(copy_from_user(&audio_24bit, (void *)arg, sizeof(audio_24bit))) {
             pr_err("%s: Could not copy lmode to user\n", __func__);
-            ret = -EFAULT;			
+            ret = -EFAULT;
         }
-        printk("%s: audio_24bit=%d\n",__func__,audio_24bit);
+        printk("%s: audio_24bit=%d\n",__func__, audio_24bit);
         mutex_unlock(&audio_cal.cal_mutex[SET_FORMAT_TYPE]);
         goto done;
 //Rice
@@ -620,8 +620,8 @@ done:
 //Jacob cherry pick ZE500KL change +++
 int get_audiomode(void)
 {
-    printk("%s: Audio mode=%d\n",__func__, audio_mode);
-    return audio_mode;
+	printk("%s: Audio mode=%d\n", __func__, audio_mode);
+	return audio_mode;
 }
 //Jacob cherry pick ZE500KL change ---
 EXPORT_SYMBOL(get_audiomode);
@@ -659,6 +659,7 @@ static long audio_cal_ioctl(struct file *f,
 #define AUDIO_SET_MODE32 _IOWR(CAL_IOCTL_MAGIC,225,compat_uptr_t)
 //Jacob cherry pick ZE500KL change ---
 #define AUDIO_SET_FORMAT32 _IOWR(CAL_IOCTL_MAGIC,231,compat_uptr_t) //Rice
+
 static long audio_cal_compat_ioctl(struct file *f,
 		unsigned int cmd, unsigned long arg)
 {
@@ -685,7 +686,6 @@ static long audio_cal_compat_ioctl(struct file *f,
 		cmd64 = AUDIO_POST_CALIBRATION;
 		break;
 	/* ASUS_BSP Paul +++ */
-
 	case AUDIO_SET_AUDIOWIZARD_FORCE_PRESET32:
 		cmd64 = AUDIO_SET_AUDIOWIZARD_FORCE_PRESET;
 		break;
@@ -695,16 +695,16 @@ static long audio_cal_compat_ioctl(struct file *f,
 		cmd64 = AUDIO_GET_HS_IMP;
 		break;
 	/* ASUS_BSP Eric --- */
-    //Jacob cherry pick ZE500KL change +++
+	//Jacob cherry pick ZE500KL change +++
 	case AUDIO_SET_MODE32:
 		cmd64 = AUDIO_SET_MODE;
 		break;
-    //Jacob cherry pick ZE500KL change ---
-    //Rice
+	//Jacob cherry pick ZE500KL change ---
+	//Rice
 	case AUDIO_SET_FORMAT32:
 		cmd64 = AUDIO_SET_FORMAT;
 		break;
-    //Rice
+	//Rice
 	default:
 		pr_err("%s: ioctl not found!\n", __func__);
 		ret = -EFAULT;

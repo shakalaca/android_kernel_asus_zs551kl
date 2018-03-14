@@ -4,11 +4,6 @@ config SENSORS_SSC
 	  Add support for sensors SSC driver.
 	  This driver is used for exercising sensors use case,
 	  time syncing with ADSP clock.
-config SYNAPTICS_SPIDRV
-	tristate "FingerPrint sensor"
-	depends on SPI_MASTER
-	help
-	  add for support FP Sensor.
 config INPUT_CM3323E
 	tristate "CM3323E RGB color sensor"
 	depends on I2C
@@ -19,3 +14,8 @@ config INPUT_ELISA
 	depends on I2C
 	help
 	  Say Y here to enable HEPTAGON Elisa Laser Sensor.
+config SYNAPTICS_SPIDRV
+	tristate "FingerPrint sensor"
+	depends on SPI_MASTER
+	help
+	  add for support FP Sensor.

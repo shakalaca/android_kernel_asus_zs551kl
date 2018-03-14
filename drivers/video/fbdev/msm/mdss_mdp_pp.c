@@ -698,7 +698,7 @@ int mdss_mdp_csc_setup_data(u32 block, u32 blk_idx, struct mdp_csc_cfg *data)
 		lv_shift = CSC_8BIT_LV_SHIFT;
 		/*
 		 * CSC is used on VIG pipes and currently VIG pipes do not
-		 * support multirect so always use RECT0
+		 * support multirect so always use RECT0.
 		 */
 		pipe = mdss_mdp_pipe_search(mdata, BIT(blk_idx),
 				MDSS_MDP_PIPE_RECT0);
@@ -3276,6 +3276,8 @@ int mdss_mdp_pp_overlay_init(struct msm_fb_data_type *mfd)
 		pr_err("Invalid mfd %pK mdata %pK\n", mfd, mdata);
 		return -EPERM;
 	}
+	if (mfd->index >= (MDP_BLOCK_MAX - MDP_LOGICAL_BLOCK_DISP_0))
+		return 0;
 
 	if (mdata->nad_cfgs)
 		mfd->mdp.ad_calc_bl = pp_ad_calc_bl;
@@ -7676,6 +7678,13 @@ static int pp_mfd_release_all(struct msm_fb_data_type *mfd)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	int ret = 0;
+	if (!mfd || !mdata) {
+		pr_err("Invalid mfd %pK mdata %pK\n", mfd, mdata);
+		return -EPERM;
+	}
+
+	if (mfd->index >= (MDP_BLOCK_MAX - MDP_LOGICAL_BLOCK_DISP_0))
+		return ret;
 
 	if (mdata->nad_cfgs) {
 		ret = pp_mfd_ad_release_all(mfd);

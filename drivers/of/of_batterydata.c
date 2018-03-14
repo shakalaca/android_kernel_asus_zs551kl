@@ -314,23 +314,23 @@ bool battIDwithinRange(struct device_node *node ,int batt_id_kohm, int id_range_
 
 	int i = 0, limit = 0, rc = 0, delta = 0;
 	struct batt_ids batt_ids;
-	bool in_range = false;	
+	bool in_range = false;
 
-			rc = of_batterydata_read_batt_id_kohm(node,
-							"qcom,batt-id-kohm",
-							&batt_ids);
+	rc = of_batterydata_read_batt_id_kohm(node,
+					"qcom,batt-id-kohm",
+					&batt_ids);
 
-			for (i = 0; i < batt_ids.num; i++) {				
-				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
-				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
-				in_range = (delta <= limit);
-				if(in_range)
-					break;
-			}
-			pr_info("[BMS] adc id(%d), profile id(%d) is %s within range\n", batt_id_kohm,
-				batt_ids.kohm[i], in_range?"":"not");
-			return in_range;
+	for (i = 0; i < batt_ids.num; i++) {
+		delta = abs(batt_ids.kohm[i] - batt_id_kohm);
+		limit = (batt_ids.kohm[i] * id_range_pct) / 100;
+		in_range = (delta <= limit);
+		if (in_range)
+			break;
+	}
+	pr_info("[BMS] adc id(%d), profile id(%d) is %s within range\n", batt_id_kohm,
+		batt_ids.kohm[i], in_range? "":"not");
 
+	return in_range;
 }
 struct device_node *of_batterydata_get_best_profile(
 		const struct device_node *batterydata_container_node,
@@ -369,7 +369,7 @@ struct device_node *of_batterydata_get_best_profile(
 		if (!rc && battery_type != NULL)
 			pr_info("[BMS] checking profile - %s ...\n", battery_type);
 
-		if (batt_type != NULL) {							
+		if (batt_type != NULL) {
 			if (!rc && strcmp(battery_type, batt_type) == 0
 				&& battIDwithinRange(node, batt_id_kohm, id_range_pct)) {
 					best_node = node;

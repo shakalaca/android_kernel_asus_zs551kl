@@ -377,8 +377,6 @@ enum {
 
 #define OTG_ENG_OTG_CFG_REG		(OTG_BASE + 0xC0)
 #define ENG_BUCKBOOST_HALT1_8_MODE_BIT	BIT(0)
-#define OTG_TR_SBQ_VCHG_BUFFER_GAIN_REG	(OTG_BASE + 0xF9)
-#define BATFET_EN_BIT			BIT(3)
 
 /* BATIF Peripheral Registers */
 /* BATIF Interrupt Bits */
@@ -593,6 +591,9 @@ enum {
 #define HVDCP_PULSE_COUNT_MAX		(USBIN_BASE + 0x5B)
 #define HVDCP_PULSE_COUNT_MAX_QC2P0		GENMASK(7, 6)
 #define HVDCP_PULSE_COUNT_MAX_QC3P0		GENMASK(5, 0)
+
+#define OTG_TR_SBQ_VCHG_BUFFER_GAIN_REG	(OTG_BASE + 0xF9)
+#define BATFET_EN_BIT			BIT(3)
 //ASUS BSP Austin_Tsneg ---
 
 #define USBIN_ADAPTER_ALLOW_CFG_REG		(USBIN_BASE + 0x60)

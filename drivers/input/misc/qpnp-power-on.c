@@ -30,16 +30,6 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
-//#include <linux/qpnp/power-on.h>
-/*ASUS BSP Porting Debug*/
-unsigned int pwr_keycode ;
-/*ASUS BSP Porting Debug*/
-// ASUS_BSP +++
-u16 warm_reset_value;
-extern char evtlog_bootup_reason[100];
-extern char evtlog_poweroff_reason[100];
-extern char evtlog_warm_reset_reason[100];
-// ASUS_BSP ---
 #include <linux/input/qpnp-power-on.h>
 #include <linux/power_supply.h>
 // ASUS_BSP_joe1++
@@ -169,6 +159,14 @@ extern char evtlog_warm_reset_reason[100];
 
 #define QPNP_POFF_REASON_UVLO			13
 
+/*ASUS_BSP Freddy_Ke 
+* For side key BMMI/SMMI test porting
+*/
+//#include <linux/wakelock.h>	//For pwr_key_wake_lock();
+//static bool g_bResume = 1;
+//static struct wake_lock pwr_key_wake_lock;
+unsigned int pwr_keycode;
+
 enum qpnp_pon_version {
 	QPNP_PON_GEN1_V1,
 	QPNP_PON_GEN1_V2,
@@ -245,7 +243,7 @@ module_param_named(
 //ASUS_BSP_joe1_++
 #define POWERKEY_SW_DEBOUNCE
 
-#ifdef POWERKEY_SW_DEBOUNCE 
+#ifdef POWERKEY_SW_DEBOUNCE
 static s64 g_prev_time = 0;
 static long g_filter = 50; //ms
 module_param(g_filter, long, S_IRUGO|S_IWUSR);
@@ -321,6 +319,13 @@ static const char * const qpnp_poff_reason[] = {
 	[38] = "Triggered from S3_RESET_PBS_NACK",
 	[39] = "Triggered from S3_RESET_KPDPWR_ANDOR_RESIN (power key and/or reset line)",
 };
+
+// ASUS_BSP +++
+u16 warm_reset_value;
+extern char evtlog_bootup_reason[100];
+extern char evtlog_poweroff_reason[100];
+extern char evtlog_warm_reset_reason[100];
+// ASUS_BSP ---
 
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
@@ -643,12 +648,13 @@ EXPORT_SYMBOL(qpnp_pon_system_pwr_off);
 int qpnp_pon_is_warm_reset(void)
 {
 	struct qpnp_pon *pon = sys_reset_dev;
+
 	// ASUS_BSP +++
 	char temp_reason[100] = {0};
 	// ASUS_BSP ---
-
 	if (!pon)
 		return -EPROBE_DEFER;
+
 
 	// ASUS_BSP +++
 	warm_reset_value = (pon->warm_reset_reason1) | (pon->warm_reset_reason2 << 8);
@@ -684,7 +690,7 @@ int qpnp_pon_is_warm_reset(void)
             }
             if (warm_reset_value & 0x0080) {
                 snprintf(evtlog_warm_reset_reason, sizeof(evtlog_warm_reset_reason), "[Power key];");
-                strlcat(temp_reason, evtlog_warm_reset_reason, sizeof(temp_reason));
+               	strlcat(temp_reason, evtlog_warm_reset_reason, sizeof(temp_reason));
             }
             if (warm_reset_value & 0x1000) {
                 snprintf(evtlog_warm_reset_reason, sizeof(evtlog_warm_reset_reason), "[N/A];");
@@ -864,6 +870,7 @@ qpnp_get_cfg(struct qpnp_pon *pon, u32 pon_type)
 
 	return NULL;
 }
+
 /* ASUS BSP freddy++ add node for side_key SMMI_Test */
 /* node: sys/module/intel_mid_powerbtn/parameter/pwrkey_mode */
 static int pwrkey_mode ;
@@ -885,13 +892,13 @@ static int pwrkeyMode_function(const char *val, struct kernel_param *kp)
 
 	if (pwrkey_mode == 0) {
 		pwr_keycode = KEY_POWER;
-		printk("[mid_powerbtn] Normal_Mode! \n");
-		printk("[mid_powerbtn] PwrKeyCode = %d\n", pwr_keycode);
+		printk("[Keys][qpnp-power-on.c] Normal_Mode! \n");
+		printk("[Keys][qpnp-power-on.c] PwrKeyCode = %d\n", pwr_keycode);
 
 	} else if (pwrkey_mode == 1) {
 		pwr_keycode = KEY_A;
-		printk("[mid_powerbtn] Debug_Mode! \n");
-		printk("[mid_powerbtn] PwrKeyCode = %d\n", pwr_keycode);
+		printk("[Keys][qpnp-power-on.c] Debug_Mode! \n");
+		printk("[Keys][qpnp-power-on.c] PwrKeyCode = %d\n", pwr_keycode);
 
 	}
 
@@ -900,9 +907,12 @@ static int pwrkeyMode_function(const char *val, struct kernel_param *kp)
 
 module_param_call(pwrkey_mode, pwrkeyMode_function, param_get_int, &pwrkey_mode, 0644);
 /* ASUS BSP freddy-- add node for side_key SMMI_Test */
-extern unsigned int b_press;
 
-int g_keycheck_abort;	//ASUS BSP Austin_T
+/* ASUS BSP Freeddy_Ke ++
+* Use g_keycheck_abort in gpio_keys_suspend_noirq, if true, abort this suspend process.
+* Let g_keycheck_abort = 0 when next suspend in suspend_prepare()
+*/
+int g_keycheck_abort = 0;	//ASUS_BSP Freddy_Ke
 
 /* ASUS_BSP + [ASDF]long press power key 6sec,reset device.. ++ */
 static struct qpnp_pon *pon_for_powerkey;
@@ -1083,7 +1093,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	u32 key_status;
 	uint pon_rt_sts;
 //ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
+#ifdef POWERKEY_SW_DEBOUNCE
 	s64 interval;
 	static int iCount = 0;
 #endif
@@ -1091,7 +1101,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	u64 elapsed_us;
 
-	g_keycheck_abort = 1;	//ASUS BSP Austin_T
+	g_keycheck_abort = 1; // Check this flag in gpio_keys_suspend_noirq, if true, abort this suspend process.
 
 	cfg = qpnp_get_cfg(pon, pon_type);
 	if (!cfg)
@@ -1119,11 +1129,12 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	switch (cfg->pon_type) {
 	case PON_KPDPWR:
-		/*+++ ASUS BSP Eric Porting Keypad for SR later+++*/
+		/*ASUS_BSP Freddy_Ke
+		* key porting
+		*/
 		cfg->key_code = pwr_keycode;
-		/*+++ ASUS BSP Eric Porting Keypad for SR later+++*/
-		pon_rt_bit = QPNP_PON_KPDPWR_N_SET;
 
+		pon_rt_bit = QPNP_PON_KPDPWR_N_SET;
 		/* for phone hang debug */
 		pon_for_powerkey = pon;
 		if (boot_after_60sec) {
@@ -1132,14 +1143,13 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 				schedule_work(&__wait_for_slowlog_work);
 				schedule_work(&__wait_for_power_key_6s_work);
 
-				if(b_press == 3) {
-					schedule_work(&__dump_log_work);
-				}
+		//		if(b_press == 3) {
+		//			schedule_work(&__dump_log_work);
+		//		}
 			} else {
 				press_time = 0xFFFFFFFF;
 			}
 		}
-
 		break;
 	case PON_RESIN:
 		pon_rt_bit = QPNP_PON_RESIN_N_SET;
@@ -1157,11 +1167,12 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	pr_debug("PMIC input: code=%d, sts=0x%hhx\n",
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
+
 	printk("[Keys][qpnp-power-on.c] keycode=%d, state=%s\n",
-			cfg->key_code, key_status?"press":"release"); //ASUS BSP Vincent +++
+			cfg->key_code, key_status?"press":"release");
 
 //ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
+#ifdef POWERKEY_SW_DEBOUNCE
 	interval = (ktime_to_ms(ktime_get()) - g_prev_time);
 
 	//printk("[qpnp-power-on.c] interval = %d ms\n", (int)interval);
@@ -1193,7 +1204,7 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 //ASUS_BSP_joe1_--
 
 //ASUS_BSP_joe1_++
-#ifndef POWERKEY_SW_DEBOUNCE 
+#ifndef POWERKEY_SW_DEBOUNCE
 	if (pon->kpdpwr_dbc_enable && cfg->pon_type == PON_KPDPWR) {
 		if (!key_status)
 			pon->kpdpwr_last_release_time = ktime_get();
@@ -1211,12 +1222,13 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 //ASUS_BSP_joe1_--
 
 	input_report_key(pon->pon_input, cfg->key_code, key_status);
+	//wake_lock_timeout(&pwr_key_wake_lock, 3000);
 	input_sync(pon->pon_input);
 
 	cfg->old_state = !!key_status;
 
 //ASUS_BSP_joe1_++
-#ifdef POWERKEY_SW_DEBOUNCE 
+#ifdef POWERKEY_SW_DEBOUNCE
 	g_prev_time = ktime_to_ms(ktime_get());
 
 	//printk("[qpnp-power-on.c] cfg->old_state =%d; g_prev_time\n", cfg->old_state);
@@ -1622,16 +1634,13 @@ qpnp_pon_config_input(struct qpnp_pon *pon,  struct qpnp_pon_config *cfg)
 		pon->pon_input->phys = "qpnp_pon/input0";
 	}
 
-
-	/* don't send dummy release event when system resumes */
-	__set_bit(INPUT_PROP_NO_DUMMY_RELEASE, pon->pon_input->propbit);
 	
-	/*ASUS BSP Porting keypad debug*/
+	/*ASUS_BSP Freddy++ Porting keypad debug*/
 	input_set_capability(pon->pon_input, EV_KEY, KEY_POWER);
 	//input_set_capability(pon->pon_input, EV_KEY, cfg->key_code);
 	input_set_capability(pon->pon_input, EV_KEY, KEY_A);
 	pwr_keycode = KEY_POWER;
-	/*ASUS BSP Porting keypad debug*/
+	/*ASUS_BSP Freddy-- Porting keypad debug*/
 
 
 	return 0;
@@ -2371,6 +2380,9 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 	char temp1_reason[100] = {0};
 	char temp2_reason[100] = {0};
 	// ASUS_BSP ---
+
+	printk("[Keys][qpnp-power-on.c] probe() +++\n");
+
 	pon = devm_kzalloc(&pdev->dev, sizeof(struct qpnp_pon), GFP_KERNEL);
 	if (!pon)
 		return -ENOMEM;
@@ -2835,8 +2847,13 @@ static int qpnp_pon_probe(struct platform_device *pdev)
 	/* config whether store the hard reset reason */
 	pon->store_hard_reset_reason = of_property_read_bool(pdev->dev.of_node,
 					"qcom,store-hard-reset-reason");
+	
+	//wake_lock_init(&pwr_key_wake_lock, WAKE_LOCK_SUSPEND, "pwr_key_lock");
 
 	qpnp_pon_debugfs_init(pdev);
+
+	printk("[Keys][qpnp-power-on.c] probe() ---\n");
+
 	return 0;
 }
 
@@ -2859,7 +2876,7 @@ static int qpnp_pon_remove(struct platform_device *pdev)
 	}
 	return 0;
 }
-//ASUS BSP : Austin_T +++
+//ASUS_BSP Freddy : Add pm function for g_keycheck_abort  +++
 #ifdef CONFIG_PM
 static int qpnp_pon_suspend(struct device *dev)
 {
@@ -2885,7 +2902,7 @@ static const struct dev_pm_ops qpnp_pon_pm_ops = {
 	.suspend_noirq  = qpnp_pon_suspend_noirq,
 };
 #endif
-//ASUS BSP : Austin_T ---
+//ASUS_BSP Freddy : Add pm function for g_keycheck_abort  ---
 
 static const struct of_device_id spmi_match_table[] = {
 	{ .compatible = "qcom,qpnp-power-on", },
@@ -2896,7 +2913,7 @@ static struct platform_driver qpnp_pon_driver = {
 	.driver		= {
 		.name		= "qcom,qpnp-power-on",
 		.of_match_table	= spmi_match_table,
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM	//Add pm function for g_keycheck_abort
 		.pm	= &qpnp_pon_pm_ops,
 #endif
 	},

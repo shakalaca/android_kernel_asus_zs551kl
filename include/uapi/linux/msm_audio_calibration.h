@@ -60,6 +60,7 @@ extern int get_audiomode(void);
 //Jacob cherry pick ZE500KL change ---
 #define AUDIO_SET_FORMAT _IOWR(CAL_IOCTL_MAGIC, 231, void *)
 extern int get_audioformat(void);
+
 enum {
 	CVP_VOC_RX_TOPOLOGY_CAL_TYPE = 0,
 	CVP_VOC_TX_TOPOLOGY_CAL_TYPE,
@@ -112,14 +113,13 @@ enum {
 	ADM_RTAC_AUDVOL_CAL_TYPE,
 
 	/* ASUS_BSP Paul +++ */
-
 	AUDIOWIZARD_FORCE_PRESET_TYPE,
 	SKYPE_STATE_TYPE,
 	/* ASUS_BSP Paul --- */
 	//Sharon++
 	SET_MODE_TYPE,
 	//Sharon--
-        SET_FORMAT_TYPE,
+	SET_FORMAT_TYPE,
 	/* ASUS_BSP Eric +++*/
 	GET_IMP_TYPE,
 	/* ASUS_BSP Eric ---*/

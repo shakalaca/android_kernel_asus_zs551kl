@@ -18,7 +18,7 @@
 #include <linux/regulator/of_regulator.h>
 
 #include "internal.h"
-extern enum DEVICE_HWID g_ASUS_hwID;
+
 static const char *const regulator_states[PM_SUSPEND_MAX + 1] = {
 	[PM_SUSPEND_MEM]	= "regulator-state-mem",
 	[PM_SUSPEND_MAX]	= "regulator-state-disk",
@@ -67,15 +67,7 @@ static void of_get_regulation_constraints(struct device_node *np,
 		constraints->valid_ops_mask |= REGULATOR_CHANGE_CURRENT;
 
 	constraints->boot_on = of_property_read_bool(np, "regulator-boot-on");
-
-	if(!strcmp(constraints->name , "pm8998_lvs1") && g_ASUS_hwID == 0x3){
-		pr_err("[Gavin_Test] find pm8998_lvs1 at SR1\n");
-		constraints->always_on = 1;
-	}
-	else{
-		constraints->always_on = of_property_read_bool(np, "regulator-always-on");
-	}
-	
+	constraints->always_on = of_property_read_bool(np, "regulator-always-on");
 	if (!constraints->always_on) /* status change should be possible. */
 		constraints->valid_ops_mask |= REGULATOR_CHANGE_STATUS;
 

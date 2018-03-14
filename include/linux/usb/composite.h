@@ -520,7 +520,6 @@ struct usb_composite_dev {
 
 	unsigned			setup_pending:1;
 	unsigned			os_desc_pending:1;
-	int 				io_error;
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);

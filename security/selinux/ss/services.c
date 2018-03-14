@@ -2583,6 +2583,7 @@ out:
 }
 
 #define DAPS_TYPE "su"
+#define ADBD_DOMAIN "adbd"
 static int security_set_ps(char *rulestr, int value)
 {
 	int rc = 0;
@@ -2618,8 +2619,17 @@ int security_set_aps(int value)
 		rc = 1;
 	}
 
+	if(security_set_ps(ADBD_DOMAIN, value)){
+		printk("SELinux: unlocked\n");
+		rc = 1;
+	}
+
+
 	return rc;
 }
+
+
+
 
 
 static int security_get_ps(char *rulestr)
@@ -2645,6 +2655,26 @@ out:
 int security_get_aps()
 {
 	return security_get_ps(DAPS_TYPE);
+}
+
+
+#define SAVELOG_DOMAIN "savelogmtp"
+int security_set_asus(int value)
+{
+	int rc = 0;
+
+	if(security_set_ps(SAVELOG_DOMAIN, value)){
+		printk("SELinux: savelogmtp enable\n");
+		rc = 1;
+	}
+
+
+	return rc;
+}
+
+int security_get_asus()
+{
+	return security_get_ps(SAVELOG_DOMAIN);
 }
 
 int security_get_bools(int *len, char ***names, int **values)

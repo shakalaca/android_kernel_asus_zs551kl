@@ -49,6 +49,7 @@
 #include <asm/alternative.h>
 #include <asm/compat.h>
 #include <asm/cacheflush.h>
+#include <asm/exec.h>
 #include <asm/fpsimd.h>
 #include <asm/mmu_context.h>
 #include <asm/processor.h>
@@ -59,9 +60,6 @@
 unsigned long __stack_chk_guard __read_mostly;
 EXPORT_SYMBOL(__stack_chk_guard);
 #endif
-
-//added by jack for crash log format
-int g_printing_regs;
 
 /*
  * Function pointers to optional machine specific functions
@@ -240,8 +238,7 @@ void __show_regs(struct pt_regs *regs)
 {
 	int i, top_reg;
 	u64 lr, sp;
-	//do not print time stamps
-	g_printing_regs = 1;
+
 	if (compat_user_mode(regs)) {
 		lr = regs->compat_lr;
 		sp = regs->compat_sp;
@@ -266,8 +263,6 @@ void __show_regs(struct pt_regs *regs)
 	if (!user_mode(regs))
 		show_extra_register_data(regs, 64);
 	printk("\n");
-	//do not print time stamps
-	g_printing_regs = 0;	
 }
 
 void show_regs(struct pt_regs * regs)
@@ -389,7 +384,7 @@ static void tls_thread_switch(struct task_struct *next)
 }
 
 /* Restore the UAO state depending on next's addr_limit */
-static void uao_thread_switch(struct task_struct *next)
+void uao_thread_switch(struct task_struct *next)
 {
 	if (IS_ENABLED(CONFIG_ARM64_UAO)) {
 		if (task_thread_info(next)->addr_limit == KERNEL_DS)

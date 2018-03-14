@@ -52,7 +52,6 @@ struct msm_eeprom_ctrl_t * get_eeprom_ctrl(void)
 	return g_e_ctrl;
 }
 //ASUS_BSP PJ_Ma---
-
 /**
   * msm_get_read_mem_size - Get the total size for allocation
   * @eeprom_map_array:	mem map
@@ -1718,7 +1717,7 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	struct device_node *of_node = pdev->dev.of_node;
 	struct msm_camera_power_ctrl_t *power_info = NULL;
 
-	pr_err("Randy %s E\n", __func__);
+	CDBG("%s E\n", __func__);
 
 	e_ctrl = kzalloc(sizeof(*e_ctrl), GFP_KERNEL);
 	if (!e_ctrl) {

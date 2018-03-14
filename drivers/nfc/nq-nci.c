@@ -267,7 +267,7 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 
 	ret = i2c_master_send(nqx_dev->client, tmp, count);
 	if (ret != count) {
-		dev_err(&nqx_dev->client->dev,
+		dev_dbg(&nqx_dev->client->dev,
 		"%s: failed to write %d\n", __func__, ret);
 		ret = -EIO;
 		goto out_free;
@@ -315,6 +315,7 @@ static int nfc_open(struct inode *inode, struct file *filp)
 int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 {
 	int r = 0;
+	int r_clk = 0;
 	struct nqx_dev *nqx_dev = filp->private_data;
 
 	dev_err(&nqx_dev->client->dev, "nfc_ioctl_power_states:%lu\n", arg);
@@ -331,8 +332,8 @@ int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 		if (gpio_is_valid(nqx_dev->firm_gpio))
 			gpio_set_value(nqx_dev->firm_gpio, 0);
 		gpio_set_value(nqx_dev->en_gpio, 0);
-		r = nqx_clock_deselect(nqx_dev);
-		if (r < 0)
+		r_clk = nqx_clock_deselect(nqx_dev);
+		if (r_clk < 0)
 			dev_err(&nqx_dev->client->dev, "unable to disable clock\n");
 		nqx_dev->nfc_ven_enabled = false;
 		/* hardware dependent delay */
@@ -344,8 +345,8 @@ int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 		if (gpio_is_valid(nqx_dev->firm_gpio))
 			gpio_set_value(nqx_dev->firm_gpio, 0);
 		gpio_set_value(nqx_dev->en_gpio, 1);
-		r = nqx_clock_select(nqx_dev);
-		if (r < 0)
+		r_clk = nqx_clock_select(nqx_dev);
+		if (r_clk < 0)
 			dev_err(&nqx_dev->client->dev, "unable to enable clock\n");
 		nqx_dev->nfc_ven_enabled = true;
 		msleep(20);
@@ -362,7 +363,7 @@ int nfc_ioctl_power_states(struct file *filp, unsigned long arg)
 		gpio_set_value(nqx_dev->en_gpio, 1);
 		msleep(20);
 		if (gpio_is_valid(nqx_dev->firm_gpio))
-			gpio_direction_output(nqx_dev->firm_gpio, 1);
+			gpio_set_value(nqx_dev->firm_gpio, 1);
 		msleep(20);
 		gpio_set_value(nqx_dev->en_gpio, 0);
 		msleep(100);

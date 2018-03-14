@@ -13,13 +13,11 @@
 #define pr_fmt(fmt) "SMB138X: %s: " fmt, __func__
 
 #include <linux/device.h>
-#include <linux/delay.h>
 #include <linux/iio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
-#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/regmap.h>
@@ -31,6 +29,10 @@
 #include "smb-lib.h"
 #include "storm-watch.h"
 #include <linux/pmic-voter.h>
+
+//ASUS BSP Austin_Tseng +++
+#include <linux/delay.h>
+#include <linux/of_gpio.h>
 
 #define SMB138X_DEFAULT_FCC_UA 1000000
 #define SMB138X_DEFAULT_ICL_UA 1500000
@@ -54,7 +56,7 @@
 
 enum {
 	OOB_COMP_WA_BIT = BIT(0),
-	SHDN_LEAKAGE_WA_BIT	= BIT(1),
+	SHDN_LEAKAGE_WA_BIT	= BIT(1),	//ASUS BSP +++
 };
 
 static struct smb_params v1_params = {
@@ -103,7 +105,7 @@ struct smb_dt_props {
 	int	chg_temp_max_mdegc;
 	int	connector_temp_max_mdegc;
 	int	pl_mode;
-	int	batfet_en_gpio;
+	int	batfet_en_gpio;	//ASUS BSP +++
 };
 
 struct smb138x {
@@ -276,6 +278,7 @@ static enum power_supply_property smb138x_usb_props[] = {
 	POWER_SUPPLY_PROP_TYPEC_MODE,
 	POWER_SUPPLY_PROP_TYPEC_POWER_ROLE,
 	POWER_SUPPLY_PROP_TYPEC_CC_ORIENTATION,
+	POWER_SUPPLY_PROP_SDP_CURRENT_MAX,
 };
 
 static int smb138x_usb_get_prop(struct power_supply *psy,
@@ -303,7 +306,7 @@ static int smb138x_usb_get_prop(struct power_supply *psy,
 		rc = smblib_get_prop_usb_voltage_now(chg, val);
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		rc = smblib_get_prop_usb_current_max(chg, val);
+		val->intval = get_effective_result(chg->usb_icl_votable);
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		val->intval = chg->usb_psy_desc.type;
@@ -316,6 +319,10 @@ static int smb138x_usb_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPEC_CC_ORIENTATION:
 		rc = smblib_get_prop_typec_cc_orientation(chg, val);
+		break;
+	case POWER_SUPPLY_PROP_SDP_CURRENT_MAX:
+		val->intval = get_client_vote(chg->usb_icl_votable,
+					      USB_PSY_VOTER);
 		break;
 	default:
 		pr_err("get prop %d is not supported\n", prop);
@@ -339,17 +346,11 @@ static int smb138x_usb_set_prop(struct power_supply *psy,
 	int rc = 0;
 
 	switch (prop) {
-	case POWER_SUPPLY_PROP_VOLTAGE_MIN:
-		rc = smblib_set_prop_usb_voltage_min(chg, val);
-		break;
-	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
-		rc = smblib_set_prop_usb_voltage_max(chg, val);
-		break;
-	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		rc = smblib_set_prop_usb_current_max(chg, val);
-		break;
 	case POWER_SUPPLY_PROP_TYPEC_POWER_ROLE:
 		rc = smblib_set_prop_typec_power_role(chg, val);
+		break;
+	case POWER_SUPPLY_PROP_SDP_CURRENT_MAX:
+		rc = smblib_set_prop_sdp_current_max(chg, val);
 		break;
 	default:
 		pr_err("set prop %d is not supported\n", prop);
@@ -362,13 +363,6 @@ static int smb138x_usb_set_prop(struct power_supply *psy,
 static int smb138x_usb_prop_is_writeable(struct power_supply *psy,
 					 enum power_supply_property prop)
 {
-	switch (prop) {
-	case POWER_SUPPLY_PROP_TYPEC_POWER_ROLE:
-		return 1;
-	default:
-		break;
-	}
-
 	return 0;
 }
 
@@ -703,21 +697,25 @@ static int smb138x_parallel_get_prop(struct power_supply *psy,
 	return rc;
 }
 
+//ASUS BSP +++
 static void smb138x_batfet_en_ctrl(struct smb138x *chip, bool batfet_n_high)
 {
 	if (chip->dt.batfet_en_gpio)
 		gpio_set_value(chip->dt.batfet_en_gpio, batfet_n_high ? 1 : 0);
 }
+//ASUS BSP ---
 
 static int smb138x_set_parallel_suspend(struct smb138x *chip, bool suspend)
 {
 	struct smb_charger *chg = &chip->chg;
 	int rc = 0;
 
+//ASUS BSP +++
 	if (!suspend && (chip->wa_flags & SHDN_LEAKAGE_WA_BIT)) {
 		smb138x_batfet_en_ctrl(chip, true);
 		msleep(20);
 	}
+//ASUS BSP ---
 
 	rc = smblib_masked_write(chg, WD_CFG_REG, WDOG_TIMER_EN_BIT,
 				 suspend ? 0 : WDOG_TIMER_EN_BIT);
@@ -735,8 +733,10 @@ static int smb138x_set_parallel_suspend(struct smb138x *chip, bool suspend)
 		return rc;
 	}
 
+//ASUS BSP +++
 	if (suspend && (chip->wa_flags & SHDN_LEAKAGE_WA_BIT))
 		smb138x_batfet_en_ctrl(chip, false);
+//ASUS BSP ---
 	return rc;
 }
 
@@ -908,13 +908,6 @@ static int smb138x_init_slave_hw(struct smb138x *chip)
 	struct smb_charger *chg = &chip->chg;
 	int rc;
 
-	/* configure to a fixed 1100khz freq to avoid tdie errors */
-	rc = smblib_set_charge_param(chg, &chg->param.freq_buck, 1100);
-	if (rc < 0) {
-		pr_err("Couldn't configure 1100Khz switch freq rc=%d\n", rc);
-		return rc;
-	}
-
 	if (chip->wa_flags & OOB_COMP_WA_BIT) {
 		rc = smblib_masked_write(chg, SMB2CHG_MISC_ENG_SDCDC_CFG2,
 					ENG_SDCDC_SEL_OOB_VTH_BIT,
@@ -934,6 +927,13 @@ static int smb138x_init_slave_hw(struct smb138x *chip)
 		}
 	}
 
+	/* configure to a fixed 700khz freq to avoid tdie errors */
+	rc = smblib_set_charge_param(chg, &chg->param.freq_buck, 700);
+	if (rc < 0) {
+		pr_err("Couldn't configure 700Khz switch freq rc=%d\n", rc);
+		return rc;
+	}
+
 	/* enable watchdog bark and bite interrupts, and disable the watchdog */
 	rc = smblib_masked_write(chg, WD_CFG_REG, WDOG_TIMER_EN_BIT
 			| WDOG_TIMER_EN_ON_PLUGIN_BIT | BITE_WDOG_INT_EN_BIT
@@ -950,6 +950,13 @@ static int smb138x_init_slave_hw(struct smb138x *chip)
 				 BITE_WDOG_DISABLE_CHARGING_CFG_BIT);
 	if (rc < 0) {
 		pr_err("Couldn't configure the watchdog bite rc=%d\n", rc);
+		return rc;
+	}
+
+	/* Disable OTG */
+	rc = smblib_masked_write(chg, CMD_OTG_REG, OTG_EN_BIT, 0);
+	if (rc < 0) {
+		pr_err("Couldn't disable OTG rc=%d\n", rc);
 		return rc;
 	}
 
@@ -1050,6 +1057,20 @@ static int smb138x_init_hw(struct smb138x *chip)
 
 	chg->dcp_icl_ua = chip->dt.usb_icl_ua;
 
+	/* Disable OTG */
+	rc = smblib_masked_write(chg, CMD_OTG_REG, OTG_EN_BIT, 0);
+	if (rc < 0) {
+		pr_err("Couldn't disable OTG rc=%d\n", rc);
+		return rc;
+	}
+
+	/* Unsuspend USB input */
+	rc = smblib_masked_write(chg, USBIN_CMD_IL_REG, USBIN_SUSPEND_BIT, 0);
+	if (rc < 0) {
+		pr_err("Couldn't unsuspend USB, rc=%d\n", rc);
+		return rc;
+	}
+
 	/* configure to a fixed 700khz freq to avoid tdie errors */
 	rc = smblib_set_charge_param(chg, &chg->param.freq_buck, 700);
 	if (rc < 0) {
@@ -1134,9 +1155,11 @@ static int smb138x_setup_wa_flags(struct smb138x *chip)
 {
 	struct pmic_revid_data *pmic_rev_id;
 	struct device_node *revid_dev_node;
+//ASUS BSP +++
 	struct smb_charger *chg = &chip->chg;
 	u8 stat;
 	int rc;
+//ASUS BSP ---
 
 	revid_dev_node = of_parse_phandle(chip->chg.dev->of_node,
 					"qcom,pmic-revid", 0);
@@ -1165,6 +1188,8 @@ static int smb138x_setup_wa_flags(struct smb138x *chip)
 				pmic_rev_id->pmic_subtype);
 		return -EINVAL;
 	}
+
+//ASUS BSP +++
 	rc = smblib_read(chg, OTG_TR_SBQ_VCHG_BUFFER_GAIN_REG, &stat);
 	if (rc < 0) {
 		pr_err("Couldn't read TR_GAIN reg rc = %d\n", rc);
@@ -1173,7 +1198,7 @@ static int smb138x_setup_wa_flags(struct smb138x *chip)
 
 	if (stat & BATFET_EN_BIT)
 		chip->wa_flags |= SHDN_LEAKAGE_WA_BIT;
-
+//ASUS BSP ---
 	return 0;
 }
 
@@ -1704,26 +1729,38 @@ static int smb138x_remove(struct platform_device *pdev)
 static void smb138x_shutdown(struct platform_device *pdev)
 {
 	struct smb138x *chip = platform_get_drvdata(pdev);
+	struct smb_charger *chg = &chip->chg;
+	int rc;
 
+	/* Suspend charging */
+	rc = smb138x_set_parallel_suspend(chip, true);
+	if (rc < 0)
+		pr_err("Couldn't suspend charging rc=%d\n", rc);
+
+	/* Disable OTG */
+	rc = smblib_masked_write(chg, CMD_OTG_REG, OTG_EN_BIT, 0);
+	if (rc < 0)
+		pr_err("Couldn't disable OTG rc=%d\n", rc);
+
+//ASUS BSP +++
 	if (chip->wa_flags & SHDN_LEAKAGE_WA_BIT) {
 		smb138x_batfet_en_ctrl(chip, false);
 		pr_err("[shanfu]%s set gpio5 to false\n", __func__);   /// QCT Shanfu
 		msleep(20);
-	}
-	else
-	{
+	} else {
 		pr_err("[shanfu]%s, Error! fail to set gpio5 to false\n", __func__); /// QCT Shanfu
 	}
-		
+//ASUS BSP +++
 }
+
 static struct platform_driver smb138x_driver = {
 	.driver	= {
 		.name		= "qcom,smb138x-charger",
 		.owner		= THIS_MODULE,
 		.of_match_table	= match_table,
 	},
-	.probe	= smb138x_probe,
-	.remove	= smb138x_remove,
+	.probe		= smb138x_probe,
+	.remove		= smb138x_remove,
 	.shutdown	= smb138x_shutdown,
 };
 module_platform_driver(smb138x_driver);

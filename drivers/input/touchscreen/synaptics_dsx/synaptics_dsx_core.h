@@ -296,7 +296,6 @@ struct synaptics_rmi4_data {
 	bool fw_updating;
 	bool support_vkeys;
 	bool update_coords;
-	bool touch_status;
 	int (*irq_enable)(struct synaptics_rmi4_data *rmi4_data, bool enable);
 	int (*reset_device)(struct synaptics_rmi4_data *rmi4_data);
 
@@ -343,9 +342,9 @@ struct synaptics_rmi4_exp_fn {
 			unsigned char intr_mask);
 };
 
-int synaptics_rmi4_bus_init_v21(void);
+int synaptics_rmi4_bus_init(void);
 
-void synaptics_rmi4_bus_exit_v21(void);
+void synaptics_rmi4_bus_exit(void);
 
 void synaptics_rmi4_dsx_new_function(struct synaptics_rmi4_exp_fn *exp_fn_mod,
 		bool insert);

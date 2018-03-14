@@ -59,8 +59,6 @@
 extern void printascii(char *);
 #endif
 
-extern int g_printing_regs;
-
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -271,7 +269,6 @@ static void *memcpy_nc(void *dest, const void *src, size_t n)
 static int write_to_asus_log_buffer(const char *text, size_t text_len,
 				enum log_flags lflags) {
 	static ulong log_write_index = 0; /* the index to write the log in asus log buffer */
-	ulong *printk_buffer_slot2_addr = (ulong *)PRINTK_BUFFER_SLOT2; /* ASUS_BSP Paul +++ */
 
 	if (!asus_log_buf) {
 		return -1;
@@ -296,8 +293,6 @@ static int write_to_asus_log_buffer(const char *text, size_t text_len,
 		asus_log_buf[log_write_index++] = '\n';
 		log_write_index = log_write_index % PRINTK_BUFFER_SLOT_SIZE;
 	}
-
-	*(printk_buffer_slot2_addr + 1) = log_write_index; /* ASUS_BSP Paul +++ */
 
 	return text_len;
 }
@@ -1114,9 +1109,6 @@ static size_t print_time(u64 ts, char *buf)
 	int this_cpu;
 	this_cpu = smp_processor_id();
 
-	if(g_printing_regs)
-		return 0;
-
 	if (!printk_time)
 		return 0;
 
@@ -1542,7 +1534,7 @@ static void call_console_drivers(int level,
 {
 	struct console *con;
 
-	trace_console(text, len);
+	trace_console_rcuidle(text, len);
 
 	if (level >= console_loglevel && !ignore_loglevel)
 		return;
@@ -1872,8 +1864,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 	ts = local_clock();
 	time_size = print_time(ts, time_buf);
 	strncpy(text, time_buf, time_size);
-	strncpy(text+time_size, text1, text_len);
+	strncpy(text + time_size, text1, (LOG_LINE_MAX - time_size ));
 	text_len += time_size;
+	if(text_len > LOG_LINE_MAX)
+		text_len = LOG_LINE_MAX ;
 	if (level == LOGLEVEL_DEFAULT)
 		level = default_message_loglevel;
 

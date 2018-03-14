@@ -599,6 +599,54 @@ static int light_turn_onoff(bool bOn)
 	return ret;
 }
 
+static int light_suspend_turn_off(bool bOn)
+{
+	int ret=0;
+
+	/* Check Hardware Support First */
+	if(ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_turn_onoff == NULL) {
+		err("light_hw_turn_onoff NOT SUPPORT. \n");
+		return -ENOENT;
+	}
+	if(ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_interrupt_onoff == NULL) {
+		err("light_hw_interrupt_onoff NOT SUPPORT. \n");
+		return -ENOENT;
+	}
+
+	/* power off */	
+	/*set turn off register*/
+	if(g_als_data->Device_switch_on == true){
+		/*disable IRQ before switch off*/		
+		dbg("[IRQ] Disable irq !! \n");
+		disable_irq_nosync(ALSPS_FRGB_SENSOR_IRQ);
+
+		/*Power OFF*/
+		if(!g_frgb_data->HAL_switch_on) {
+			ret = ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_turn_onoff(false);
+			if(ret < 0){
+				err("light_hw_turn_onoff(false) ERROR. \n");
+				return ret;
+			}
+		}
+
+		/*Disbale INT*/
+		ret = ALSPS_FRGB_hw_client->mlsensor_hw->light_hw_interrupt_onoff(false);
+		if(ret < 0){
+			err("light_hw_interrupt_onoff(false) ERROR. \n");
+			return ret;
+		}
+
+		g_als_data->Device_switch_on = false;
+		/*enable IRQ when proximity sensor is ON*/
+		if (g_ps_data->Device_switch_on == true) {
+			dbg("[IRQ] Enable irq !! \n");
+			enable_irq(ALSPS_FRGB_SENSOR_IRQ);
+		}
+	}
+
+	return ret;
+}
+
 static int light_get_lux(int adc)
 {
 	int lux = 0;
@@ -694,6 +742,31 @@ static int FRGB_turn_onoff(bool bOn)
 			}
 			g_frgb_data->Device_switch_on = false;	
 		}
+	}
+	
+	return ret;
+}
+
+static int FRGB_suspend_turn_off(bool bOn)
+{
+	int ret=0;
+
+	/* Check Hardware Support First */
+	if(ALSPS_FRGB_hw_client->mFRGB_hw->frgb_hw_turn_onoff == NULL) {
+		err("frgb_hw_turn_onoff NOT SUPPORT. \n");
+		return -ENOENT;
+	}
+	
+	/* power off */	
+	/*set turn off register*/
+	if(g_frgb_data->Device_switch_on == true) {
+		if(!g_als_data->HAL_switch_on) {
+			ret = ALSPS_FRGB_hw_client->mFRGB_hw->frgb_hw_turn_onoff(false);
+			if(ret < 0){
+				err("frgb_hw_turn_onoff(false) ERROR. \n");
+			}
+		}
+		g_frgb_data->Device_switch_on = false;	
 	}
 	
 	return ret;
@@ -1917,7 +1990,6 @@ static void proximity_work(int state)
 			g_ps_data->event_counter++;	/* --- For stress test debug --- */
 			audio_mode = get_audiomode();
 			if (2 == audio_mode || 3 == audio_mode) {
-
 				ftxxxx_disable_touch(true);
 			}
 		} else {
@@ -2023,7 +2095,7 @@ mutex_lock(&g_alsps_frgb_lock);
 	/* Read INT_FLAG will clean the interrupt */
 	ALSPS_FRGB_SENSOR_INT = ALSPS_FRGB_hw_client->ALSPS_FRGB_hw_get_interrupt();
 	if(ALSPS_FRGB_SENSOR_INT <0){
-		err("ALSPS_FRGB_hw_get_interrupt ERROR\n");
+//		err("ALSPS_FRGB_hw_get_interrupt ERROR\n");
 		goto ist_err;
 	}
 
@@ -2496,11 +2568,11 @@ void mALSPS_FRGB_algo_suspend(void)
 
 	/* For make sure Light sensor mush be switch off when system suspend */
 	if (g_als_data->Device_switch_on)				
-		light_turn_onoff(false);
+		light_suspend_turn_off(false);
 	
 	/* For make sure FRGB sensor mush be switch off when system suspend */
 	if (g_frgb_data->Device_switch_on)				
-		FRGB_turn_onoff(false);
+		FRGB_suspend_turn_off(false);
 	
 	log("Driver SUSPEND ---\n");
 	

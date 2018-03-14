@@ -102,7 +102,6 @@ struct msm_flash_ctrl_t {
 
 	/* flash state */
 	enum msm_camera_flash_state_t flash_state;
-	
 };
 
 int msm_flash_i2c_probe(struct i2c_client *client,
@@ -125,5 +124,4 @@ int msm_flash_led_release(struct msm_flash_ctrl_t *fctrl);
 int msm_flash_led_off(struct msm_flash_ctrl_t *fctrl);
 int msm_flash_led_low(struct msm_flash_ctrl_t *fctrl);
 int msm_flash_led_high(struct msm_flash_ctrl_t *fctrl);
-
 #endif

@@ -116,7 +116,7 @@
 /* Convert from vout ctl to micbias voltage in mV */
 #define WCD_VOUT_CTL_TO_MICB(v) (1000 + v * 50)
 
-#define TASHA_ZDET_NUM_MEASUREMENTS 150
+#define TASHA_ZDET_NUM_MEASUREMENTS 900
 #define TASHA_MBHC_GET_C1(c)  ((c & 0xC000) >> 14)
 #define TASHA_MBHC_GET_X1(x)  (x & 0x3FFF)
 /* z value compared in milliOhm */
@@ -149,13 +149,6 @@ static int cpe_debug_mode;
 #define DAPM_MICBIAS3_STANDALONE "MIC BIAS3 Standalone"
 #define DAPM_MICBIAS4_STANDALONE "MIC BIAS4 Standalone"
 
-//Austin +++
-#define AUDIO_DEBUG_GPIO 25
-struct tasha_priv *g_tasha;
-int g_DebugMode = 1;
-struct switch_dev *g_audiowizard_force_preset_sdev = NULL;
-//extern int g_ftm_mode;
-//Austin ---
 #define DAPM_LDO_H_STANDALONE "LDO_H"
 module_param(cpe_debug_mode, int,
 	     S_IRUGO | S_IWUSR | S_IWGRP);
@@ -164,6 +157,14 @@ MODULE_PARM_DESC(cpe_debug_mode, "boot cpe in debug mode");
 #define TASHA_DIG_CORE_COLLAPSE_TIMER_MS  (5 * 1000)
 
 #define MAX_ON_DEMAND_SUPPLY_NAME_LENGTH    64
+
+//Austin +++
+#define AUDIO_DEBUG_GPIO 25
+struct tasha_priv *g_tasha;
+int g_DebugMode = 1;
+struct switch_dev *g_audiowizard_force_preset_sdev = NULL;
+//extern int g_ftm_mode;
+//Austin ---
 
 static char on_demand_supply_name[][MAX_ON_DEMAND_SUPPLY_NAME_LENGTH] = {
 	"cdc-vdd-mic-bias",
@@ -359,6 +360,7 @@ static struct afe_param_id_cdc_aanc_version tasha_cdc_aanc_version = {
 };
 
 struct snd_soc_codec *registered_codec; //Austin +++
+
 enum {
 	VI_SENSE_1,
 	VI_SENSE_2,
@@ -2233,6 +2235,32 @@ static void tasha_mbhc_moisture_config(struct wcd_mbhc *mbhc)
 	tasha_mbhc_hph_l_pull_up_control(codec, mbhc->moist_iref);
 }
 
+static void tasha_update_anc_state(struct snd_soc_codec *codec, bool enable,
+				   int anc_num)
+{
+	if (enable)
+		snd_soc_update_bits(codec, WCD9335_CDC_RX1_RX_PATH_CFG0 +
+				(20 * anc_num), 0x10, 0x10);
+	else
+		snd_soc_update_bits(codec, WCD9335_CDC_RX1_RX_PATH_CFG0 +
+				(20 * anc_num), 0x10, 0x00);
+}
+
+static bool tasha_is_anc_on(struct wcd_mbhc *mbhc)
+{
+	bool anc_on = false;
+	u16 ancl, ancr;
+
+	ancl =
+	(snd_soc_read(mbhc->codec, WCD9335_CDC_RX1_RX_PATH_CFG0)) & 0x10;
+	ancr =
+	(snd_soc_read(mbhc->codec, WCD9335_CDC_RX2_RX_PATH_CFG0)) & 0x10;
+
+	anc_on = !!(ancl | ancr);
+
+	return anc_on;
+}
+
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = tasha_mbhc_request_irq,
 	.irq_control = tasha_mbhc_irq_control,
@@ -2255,6 +2283,8 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.mbhc_gnd_det_ctrl = tasha_mbhc_gnd_det_ctrl,
 	.hph_pull_down_ctrl = tasha_mbhc_hph_pull_down_ctrl,
 	.mbhc_moisture_config = tasha_mbhc_moisture_config,
+	.update_anc_state = tasha_update_anc_state,
+	.is_anc_on = tasha_is_anc_on,
 };
 
 static int tasha_get_anc_slot(struct snd_kcontrol *kcontrol,
@@ -4059,6 +4089,8 @@ static int tasha_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0xC0, 0xC0);
 		}
 		set_bit(HPH_PA_DELAY, &tasha->status_mask);
+		if (!(strcmp(w->name, "HPHR PA")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x40, 0x40);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		if (!(strcmp(w->name, "ANC HPHR PA"))) {
@@ -4113,6 +4145,8 @@ static int tasha_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
 		if (!(strcmp(w->name, "ANC HPHR PA")))
 			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x40, 0x00);
+		if (!(strcmp(w->name, "HPHR PA")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x40, 0x00);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		/* 5ms sleep is required after PA is disabled as per
@@ -4152,6 +4186,8 @@ static int tasha_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 		    (test_bit(HPH_PA_DELAY, &tasha->status_mask))) {
 			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0xC0, 0xC0);
 		}
+		if (!(strcmp(w->name, "HPHL PA")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x80, 0x80);
 		set_bit(HPH_PA_DELAY, &tasha->status_mask);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
@@ -4207,6 +4243,8 @@ static int tasha_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 					&tasha->mbhc);
 		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
 		if (!(strcmp(w->name, "ANC HPHL PA")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x80, 0x00);
+		if (!(strcmp(w->name, "HPHL PA")))
 			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x80, 0x00);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
@@ -4530,6 +4568,9 @@ static int tasha_codec_hphr_dac_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		if (!(strcmp(w->name, "RX INT2 DAC"))) {
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x10, 0x10);
+		}
 		if (tasha->anc_func) {
 			ret = tasha_codec_enable_anc(w, kcontrol, event);
 			/* 40 msec delay is needed to avoid click and pop */
@@ -4568,6 +4609,8 @@ static int tasha_codec_hphr_dac_event(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+		if (!(strcmp(w->name, "RX INT2 DAC")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x10, 0x00);
 		if ((hph_mode == CLS_H_LP) &&
 		   (TASHA_IS_1_1(wcd9xxx))) {
 			snd_soc_update_bits(codec, WCD9335_HPH_L_DAC_CTL,
@@ -4631,6 +4674,8 @@ static int tasha_codec_hphl_dac_event(struct snd_soc_dapm_widget *w,
 			     ((hph_mode == CLS_H_LOHIFI) ?
 			       CLS_H_HIFI : hph_mode));
 
+		if (!(strcmp(w->name, "RX INT1 DAC")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x20, 0x20);
 		tasha_codec_hph_mode_config(codec, event, hph_mode);
 
 		if (tasha->anc_func)
@@ -4660,6 +4705,8 @@ static int tasha_codec_hphl_dac_event(struct snd_soc_dapm_widget *w,
 		}
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
+		if (!(strcmp(w->name, "RX INT1 DAC")))
+			snd_soc_update_bits(codec, WCD9335_ANA_HPH, 0x20, 0x00);
 		if ((hph_mode == CLS_H_LP) &&
 		   (TASHA_IS_1_1(wcd9xxx))) {
 			snd_soc_update_bits(codec, WCD9335_HPH_L_DAC_CTL,
@@ -4958,7 +5005,7 @@ static int tasha_codec_enable_spline_src(struct snd_soc_codec *codec,
 					 int src_num,
 					 int event)
 {
-	u16 src_paired_reg;
+	u16 src_paired_reg = 0;
 	struct tasha_priv *tasha;
 	u16 rx_path_cfg_reg = WCD9335_CDC_RX1_RX_PATH_CFG0;
 	u16 rx_path_ctl_reg = WCD9335_CDC_RX1_RX_PATH_CTL;
@@ -5916,8 +5963,6 @@ static int tasha_codec_enable_dec(struct snd_soc_dapm_widget *w,
 					    CF_MIN_3DB_150HZ << 5);
 		/* Enable TX PGA Mute */
 		snd_soc_update_bits(codec, tx_vol_ctl_reg, 0x10, 0x10);
-		/* Enable APC */
-		snd_soc_update_bits(codec, dec_cfg_reg, 0x08, 0x08);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		snd_soc_update_bits(codec, hpf_gate_reg, 0x01, 0x00);
@@ -5944,7 +5989,6 @@ static int tasha_codec_enable_dec(struct snd_soc_dapm_widget *w,
 		hpf_cut_off_freq =
 			tasha->tx_hpf_work[decimator].hpf_cut_off_freq;
 		snd_soc_update_bits(codec, tx_vol_ctl_reg, 0x10, 0x10);
-		snd_soc_update_bits(codec, dec_cfg_reg, 0x08, 0x00);
 		if (cancel_delayed_work_sync(
 		    &tasha->tx_hpf_work[decimator].dwork)) {
 			if (hpf_cut_off_freq != CF_MIN_3DB_150HZ) {
@@ -6987,13 +7031,13 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"AMIC MUX13", "ADC6", "ADC6"},
 	/* ADC Connections */
 	{"ADC1", NULL, "MIC BIAS1"},
-    {"MIC BIAS1", NULL, "AMIC1"},
+	{"MIC BIAS1", NULL, "AMIC1"},
 	{"ADC2", NULL, "MIC BIAS2"},
-    {"MIC BIAS2", NULL, "AMIC2"},
+	{"MIC BIAS2", NULL, "AMIC2"},
 	{"ADC3", NULL, "MIC BIAS1"},
-    {"MIC BIAS1", NULL, "AMIC3"},
+	{"MIC BIAS1", NULL, "AMIC3"},
 	{"ADC4", NULL, "MIC BIAS3"},
-    {"MIC BIAS3", NULL, "AMIC4"},
+	{"MIC BIAS3", NULL, "AMIC4"},
 	{"ADC5", NULL, "AMIC5"},
 	{"ADC6", NULL, "AMIC6"},
 
@@ -7938,7 +7982,7 @@ static int tasha_mad_input_put(struct snd_kcontrol *kcontrol,
 //Bruno++
 	u32 mic_bias_found = 0;     //Bruno++
 #if 0
-    struct snd_soc_card *card = codec->component.card;
+	struct snd_soc_card *card = codec->component.card;
 	char mad_amic_input_widget[6];
 	const char *mad_input_widget;
 	const char *source_widget = NULL;
@@ -8036,8 +8080,8 @@ static int tasha_mad_input_put(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 #endif
-    tasha_mad_input = 1;
-    mic_bias_found = 1;
+	tasha_mad_input = 1;
+	mic_bias_found = 1;
 //Bruno++
 
 	dev_dbg(codec->dev,
@@ -11098,12 +11142,12 @@ static const struct snd_soc_dapm_widget tasha_dapm_widgets[] = {
 		0, 0, tasha_codec_ear_dac_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_DAC_E("RX INT1 DAC", NULL, WCD9335_ANA_HPH,
-		5, 0, tasha_codec_hphl_dac_event,
+	SND_SOC_DAPM_DAC_E("RX INT1 DAC", NULL, SND_SOC_NOPM,
+		0, 0, tasha_codec_hphl_dac_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_DAC_E("RX INT2 DAC", NULL, WCD9335_ANA_HPH,
-		4, 0, tasha_codec_hphr_dac_event,
+	SND_SOC_DAPM_DAC_E("RX INT2 DAC", NULL, SND_SOC_NOPM,
+		0, 0, tasha_codec_hphr_dac_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_DAC_E("RX INT3 DAC", NULL, SND_SOC_NOPM,
@@ -11118,11 +11162,11 @@ static const struct snd_soc_dapm_widget tasha_dapm_widgets[] = {
 	SND_SOC_DAPM_DAC_E("RX INT6 DAC", NULL, SND_SOC_NOPM,
 		0, 0, tasha_codec_lineout_dac_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_PGA_E("HPHL PA", WCD9335_ANA_HPH, 7, 0, NULL, 0,
+	SND_SOC_DAPM_PGA_E("HPHL PA", SND_SOC_NOPM, 0, 0, NULL, 0,
 			   tasha_codec_enable_hphl_pa,
 			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 			   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_PGA_E("HPHR PA", WCD9335_ANA_HPH, 6, 0, NULL, 0,
+	SND_SOC_DAPM_PGA_E("HPHR PA", SND_SOC_NOPM, 0, 0, NULL, 0,
 			   tasha_codec_enable_hphr_pa,
 			   SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMU |
 			   SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMD),
@@ -12131,8 +12175,10 @@ static int tasha_dig_core_power_collapse(struct tasha_priv *tasha,
 		goto unlock_mutex;
 
 	if (tasha->power_active_ref < 0) {
-		dev_dbg(tasha->dev, "%s: power_active_ref is negative\n",
+		dev_info(tasha->dev,
+			"%s: power_active_ref is negative, resetting it\n",
 			__func__);
+		tasha->power_active_ref = 0;
 		goto unlock_mutex;
 	}
 
@@ -13567,8 +13613,7 @@ static struct regulator *tasha_codec_find_ondemand_regulator(
 //Austin +++
 #define AUDIO_DEBUG_PROC_FILE "driver/audio_debug"
 #define AUDIO_REGISTER_DUMP_PROC_FILE "driver/audio_register_dump"
-#define AUDIO_CODEC_STATUS_PROC_FILE "driver/codec_status"
-
+#define AUDIO_CODEC_STATUS_PROC_FILE "driver/audio_codec_status"
 
 static struct proc_dir_entry *audio_debug_proc_file;
 
@@ -13611,6 +13656,8 @@ static ssize_t audio_debug_proc_write(struct file *filp, const char __user *buff
 			wcd_mbhc_plug_detect_for_debug_mode(&g_tasha->mbhc, 0);
 		}
 		printk("[Audio][Debug] Audio headset normal mode!!\n");
+	} else {
+		printk("[Audio][Debug] %s\n", messages);
 	}
 
 	deinitKernelEnv();
@@ -13661,7 +13708,6 @@ static ssize_t audio_debug_proc_read(struct file *filp, char __user *buff, size_
 	return len;
 }
 
-
 static void regmap_proc_free_dump_cache(struct regmap *map)
 {
 	struct regmap_debugfs_off_cache *c;
@@ -13673,9 +13719,7 @@ static void regmap_proc_free_dump_cache(struct regmap *map)
 		list_del(&c->list);
 		kfree(c);
 	}
-
 }
-
 
 static unsigned int regmap_proc_get_dump_start(struct regmap *map,
 						  unsigned int base,
@@ -13767,7 +13811,6 @@ static unsigned int regmap_proc_get_dump_start(struct regmap *map,
 	return ret;
 }
 
-
 static ssize_t audio_register_dump_proc_read(struct file *filp, char __user *user_buf, size_t count, loff_t *ppos)
 {
 	size_t buf_pos = 0;
@@ -13839,7 +13882,6 @@ out:
 
 }
 
-
 static ssize_t audio_codec_status_proc_read(struct file *filp, char __user *buff, size_t len, loff_t *off)
 {
 	char messages[256];
@@ -13873,42 +13915,41 @@ static struct file_operations audio_debug_proc_ops = {
 };
 
 static struct file_operations audio_register_dump_proc_ops = {
-  	.read = audio_register_dump_proc_read, 	
+	.read = audio_register_dump_proc_read,
 };
 
 static struct file_operations audio_codec_status_proc_ops = {
-	.read = audio_codec_status_proc_read, 	
+	.read = audio_codec_status_proc_read,
 };
+
 static void create_audio_debug_proc_file(void)
 {
 	printk("[Audio][Debug] create_audio_debug_proc_file\n");
 	audio_debug_proc_file = proc_create(AUDIO_DEBUG_PROC_FILE, 0666, NULL, &audio_debug_proc_ops);
-	
-if (audio_debug_proc_file == NULL)
-	printk("[Audio][Debug] create_audio_debug_proc_file failed\n");
 
+	if (audio_debug_proc_file == NULL)
+		printk("[Audio][Debug] create_audio_debug_proc_file failed\n");
 }
 
 static void create_audio_register_dump_proc_file(void)
 {
 	printk("[Audio][Debug] create_audio_register_dump_proc_file\n");
 	audio_debug_proc_file = proc_create(AUDIO_REGISTER_DUMP_PROC_FILE, 0666, NULL, &audio_register_dump_proc_ops);
-	
-if (audio_debug_proc_file == NULL)
-   	printk("[Audio][Debug] create_audio_register_dump_proc_file failed\n");
 
+	if (audio_debug_proc_file == NULL)
+		printk("[Audio][Debug] create_audio_register_dump_proc_file failed\n");
 }
 
 static void create_audio_codec_status_proc_file(void)
 {
 	printk("[Audio][Debug] create_audio_codec_status_proc_file\n");
 	audio_debug_proc_file = proc_create(AUDIO_CODEC_STATUS_PROC_FILE, 0666, NULL, &audio_codec_status_proc_ops);
-	
-if (audio_debug_proc_file == NULL)
-   printk("[Audio][Debug] create_audio_codec_status_proc_file failed\n");
 
+	if (audio_debug_proc_file == NULL)
+		printk("[Audio][Debug] create_audio_codec_status_proc_file failed\n");
 }
 //Austin---
+
 static int tasha_codec_probe(struct snd_soc_codec *codec)
 {
 	struct wcd9xxx *control;
@@ -14118,19 +14159,18 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_disable_pin(dapm, "ANC SPK1 PA");
 	mutex_unlock(&tasha->codec_mutex);
 	snd_soc_dapm_sync(dapm);
+
 	g_tasha = tasha;
 	//Austin +++
 	ret = gpio_request(AUDIO_DEBUG_GPIO, "AUDIO_DEBUG");
 	if (ret)
 		printk("%s: Failed to request gpio AUDIO_DEBUG \n", __func__);
 	else {
-		printk("%s: success  request gpio AUDIO_DEBUG", __func__);
-		gpio_direction_output(AUDIO_DEBUG_GPIO, 1); /* disable uart log, enable audio */
-		g_DebugMode = 0;
-		wcd_mbhc_plug_detect_for_debug_mode(&g_tasha->mbhc, 0);
+		printk("%s: Request gpio AUDIO_DEBUG successfully", __func__);
+		gpio_direction_output(AUDIO_DEBUG_GPIO, 0);
 	}
 	/* ASUS_BSP Paul +++ */
-        if (!g_audiowizard_force_preset_sdev) {
+	if (!g_audiowizard_force_preset_sdev) {
 		g_audiowizard_force_preset_sdev = kzalloc(sizeof(struct switch_dev), GFP_KERNEL);
 		if (!g_audiowizard_force_preset_sdev) {
 			pr_err("%s: failed to allocate switch_dev\n", __func__);
@@ -14149,6 +14189,7 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	create_audio_register_dump_proc_file();
 	create_audio_codec_status_proc_file();
 	//Austin ---
+
 	return ret;
 
 err_pdata:

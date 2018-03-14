@@ -120,13 +120,6 @@ static int cm36656_proximity_hw_set_config(void)
 	if (ret < 0)		
 		return ret;
 
-          if(g_ASUS_hwID >= 0x4){
-
-		ret = cm36656_proximity_hw_set_ps_start(CM36656_PS_START);
-		if (ret < 0)		
-			return ret;
-          }
-
 	return 0;	
 }
 
@@ -271,7 +264,7 @@ static int cm36656_ALSPS_FRGB_hw_get_interrupt(void)
 
 	/* Interrupt Error */
 	if(check_flag == false){		
-		err("Can NOT recognize the INT_FLAG (0x%02X%02X)\n", buf[1], buf[0]);
+//		err("Can NOT recognize the INT_FLAG (0x%02X%02X)\n", buf[1], buf[0]);
 		return -1;
 	}
 
@@ -283,9 +276,17 @@ static int cm36656_ALSPS_FRGB_hw_get_interrupt(void)
 /******************/
 static int cm36656_proximity_hw_turn_onoff(bool bOn)
 {
+	static int PS_START = 0;
 	int ret = 0;
 	uint8_t power_state_data_buf[2] = {0, 0};
 	uint8_t power_state_data_origin[2] = {0, 0};
+
+	if(g_ASUS_hwID >= 0x4 && 0 == PS_START) {
+		ret = cm36656_proximity_hw_set_ps_start(CM36656_PS_START);
+		if (ret < 0)		
+			return ret;
+		PS_START = 1;
+	}
 
 	/* read power status */
 	ret = i2c_read_reg_u16(g_i2c_client, PS_CONF1, power_state_data_buf);

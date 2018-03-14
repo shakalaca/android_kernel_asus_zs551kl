@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,7 +11,6 @@
  */
 
 #include <linux/export.h>
-#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
@@ -59,10 +58,6 @@ enum cnss_dev_bus_type {
 static DEFINE_MUTEX(unsafe_channel_list_lock);
 static DEFINE_MUTEX(dfs_nol_info_lock);
 
-static int do_softap_band = 0;
-module_param(do_softap_band, int, S_IWUSR | S_IRUGO);
-MODULE_PARM_DESC(do_softap_band, "Is the softap band flag");
-
 static struct cnss_unsafe_channel_list {
 	u16 unsafe_ch_count;
 	u16 unsafe_ch_list[CNSS_MAX_CH_NUM];
@@ -72,6 +67,8 @@ static struct cnss_dfs_nol_info {
 	void *dfs_nol_info;
 	u16 dfs_nol_info_len;
 } dfs_nol_info;
+
+static enum cnss_cc_src cnss_cc_source = CNSS_SOURCE_CORE;
 
 int cnss_set_wlan_unsafe_channel(u16 *unsafe_ch_list, u16 ch_count)
 {
@@ -496,14 +493,19 @@ int cnss_get_fw_files_for_target(struct cnss_fw_files *pfw_files,
 }
 EXPORT_SYMBOL(cnss_get_fw_files_for_target);
 
+void cnss_set_cc_source(enum cnss_cc_src cc_source)
+{
+	cnss_cc_source = cc_source;
+}
+EXPORT_SYMBOL(cnss_set_cc_source);
+
+enum cnss_cc_src cnss_get_cc_source(void)
+{
+	return cnss_cc_source;
+}
+EXPORT_SYMBOL(cnss_get_cc_source);
+
 const char *cnss_wlan_get_evicted_data_file(void)
 {
 	return FW_FILES_QCA6174_FW_3_0.evicted_data;
 }
-
-int wcnss_get_softap_band(void)
-{
-	pr_info("[wcnss]: do_softap_band=%d.\n", do_softap_band);
-	return do_softap_band;
-}
-EXPORT_SYMBOL(wcnss_get_softap_band);

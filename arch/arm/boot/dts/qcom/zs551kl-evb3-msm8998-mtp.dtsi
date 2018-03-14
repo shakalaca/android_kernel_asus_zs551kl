@@ -185,72 +185,9 @@
 };
 
 //+++.....................................................Peripheral bus part....................................................+++//
-		/* BLSP2 (BLSP QUP2) for Cap Sensor */
- /*&i2c_2 {
 
- 	status = "okay";
- 	focaltech@38 {
- 		compatible = "focaltech,fts";
- 	//compatible = "focaltech,ft3517";
-  		reg = <0x38>;
-  		interrupt-parent = <&tlmm>;
-  		interrupts = <123 0x2008>;
-  		vdd-supply = <&pm8998_l28>;
-  		vcc_i2c-supply = <&pm8998_l14>;
- 		// pins used by touchscreen 
-  		pinctrl-names = "pmx_ts_active","pmx_ts_suspend","pmx_ts_release";
- 		pinctrl-0 = <&ts_active>;
- 		pinctrl-1 = <&ts_suspend>;
-  		//pinctrl-2 = <&ts_release>;
- 		focaltech,name = "ft3517";
- 		focaltech,family-id = <0x58>;
- 		focaltech,reset-gpio = <&tlmm 129 0x0>;
-  		focaltech,irq-gpio = <&tlmm 123 0x2008>;
-  		focaltech,display-coords = <0 0 1080 1920>;
-  		focaltech,panel-coords = <0 0 1080 1920>;
- //		focaltech,button-map= <139 102 158>;
-  		focaltech,no-force-update;
-  		focaltech,i2c-pull-up;
-  		focaltech,group-id = <1>;
-  		focaltech,hard-reset-delay-ms = <20>;
-  		focaltech,soft-reset-delay-ms = <200>;
-		focaltech,num-max-touches = <10>;
-  		focaltech,fw-delay-aa-ms = <30>;
-  		focaltech,fw-delay-55-ms = <30>;
- 		focaltech,fw-upgrade-id1 = <0x58>;
- 		focaltech,fw-upgrade-id2 = <0x2c>;
-  		focaltech,fw-delay-readid-ms = <10>;
-  		focaltech,fw-delay-era-flsh-ms = <2000>;
-  		focaltech,fw-auto-cal;
-  		focaltech,ignore-id-check;
-  	};
-
- };*/
- 
 &i2c_5 {	/* BLSP5 (BLSP QUP5) for Touch */
 	status = "okay";
-	synaptics_dsx@4b {
-		compatible = "synaptics,dsx-i2c";
-		reg = <0x4b>;
-		interrupt-parent = <&tlmm>;
-		interrupts = <125 0x2008>;
-		vcc_i2c-supply = <&pm8998_l14>;
-		//synaptics,pwr-reg-name = "vdd_ana";
-		synaptics,bus-reg-name = "vcc_i2c";
-		synaptics,irq-gpio = <&tlmm 125 0x2008>;
-		synaptics,irq-on-state = <0>;
-		synaptics,irq-flags = <0x2008>; // IRQF_ONESHOT | IRQF_TRIGGER_LOW 
-		#synaptics,power-delay-ms = <200>;
-		#synaptics,reset-delay-ms = <200>;
-		synaptics,reset-on-state = <0>;
-		synaptics,reset-active-ms = <20>;
-		synaptics,ub-i2c-addr = <0x2c>;
-		// uncomment and update line below as appropriate if there are 0D buttons 
-		synaptics,cap-button-codes = <158 172 139>;
-		// uncomment and update lines below as appropriate if there are virtual buttons 
-		// synaptics,vir-button-codes = <102 100 900 100 60 158 300 900 100 60>; 
-		// synaptics,max-y-for-2d = <800>; 
-	};	
 	focaltech@38 {
 		compatible = "focaltech,5X46";
 		focaltech,name = "ft5x46";
@@ -290,47 +227,26 @@
 		focaltech,ignore-id-check;
 
 	};
-	synaptics@20 {
-		compatible = "synaptics,dsx";
-		reg = <0x20>;
-		interrupt-parent = <&tlmm>;
-		interrupts = <125 0x2008>;
-		vdd-supply = <&pm8998_l14>;
-		avdd-supply = <&pm8998_l28>;
-		synaptics,vdd-voltage = <1880000 1880000>;
-		synaptics,avdd-voltage = <3008000 3008000>;
-		synaptics,vdd-current = <40000>;
-		synaptics,avdd-current = <20000>;
-		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
-		pinctrl-0 = <&ts_active>;
-		pinctrl-1 = <&ts_int_suspend &ts_reset_suspend>;
-		synaptics,display-coords = <0 0 1439 2559>;
-		synaptics,panel-coords = <0 0 1439 2559>;
-		synaptics,reset-gpio = <&tlmm 89 0x00>;
-		synaptics,irq-gpio = <&tlmm 125 0x2008>;
-		synaptics,disable-gpios;
-		synaptics,fw-name = "PR2424644-s3508t_hybrid_00050007.img";
-		//synaptics,fw-name = "PR2463803-BOE-4004F315_0909.img";
-		clock-names = "iface_clk", "core_clk";
-		clocks = <&clock_gcc clk_gcc_blsp1_ahb_clk>, <&clock_gcc clk_gcc_blsp1_qup5_i2c_apps_clk>;
-
-	};
+	
 };
 
 &i2c_6 {	/* BLSP6 (BLSP QUP6) for Audio */
 	status = "okay";
 	tas2557s@4c {
 		compatible = "ti,tas2557s";
-		reg = <0x4c>;			
+		reg = <0x4c>;
 		ti,cdc-reset-gpio = <&tlmm 41 0>;
+		ti,reset-gpio-left = <&tlmm 41 0>;
+		ti,reset-gpio-right = <&tlmm 41 0>;
 		ti,load = <0>;   /* 0, 8Ohm; 1, 6Ohm; 2, 4Ohm */
 		ti,irq-gpio-left = <&tlmm 76 0>;
 		ti,irq-gpio-right = <&tlmm 75 0>;
-		ti,left-channel = <0x4c>;
-		ti,right-channel = <0x4d>;
-		ti,echo-ref = <1>;   /* 0, left channel; 1, right channel; 2, both */
+		ti,left-channel = <0x4d>;
+		ti,right-channel = <0x4c>;
+		ti,echo-ref = <0>;   /* 0, left channel; 1, right channel; 2, both */
 		ti,i2s-bits = <24>;  /* support 16, 24, 32 */
-		};
+		ti,bypass-tmax = <0>;   /* 0, not bypass; 1, bypass */
+	};
 };
 
 &i2c_7 {	/* BLSP7 (BLSP QUP7) for Sensors */
@@ -410,24 +326,24 @@
 		#size-cells = <0>;
 	};
 
-	nq@28 {
-		compatible = "qcom,nq-nci";
+	pn547@28 {
+		compatible = "nxp,pn547";
 		reg = <0x28>;
-		qcom,nq-irq = <&tlmm 92 0x00>;
-		qcom,nq-ven = <&tlmm 12 0x00>;
-		qcom,nq-firm = <&tlmm 93 0x00>;
-		qcom,nq-clkreq = <&pm8998_gpios 21 0x00>;
-		qcom,nq-esepwr = <&tlmm 116 0x00>;
+		nxp,pn544-irq = <&tlmm 92 0x00>;
+		nxp,pn544-ven = <&tlmm 12 0x00>;
+		nxp,pn544-firm = <&tlmm 93 0x00>;
+		nxp,pn5xx-clkreq = <&pm8998_gpios 21 0x00>;
+		/* qcom,nq-esepwr = <&tlmm 116 0x00>; */
 
 		interrupt-parent = <&tlmm>;
-		qcom,clk-src = "BBCLK3";
+		/* qcom,clk-src = "BBCLK3"; */
 		interrupts = <92 0>;
-		interrupt-names = "nfc_irq";
+		/* interrupt-names = "nfc_irq"; */
 		pinctrl-names = "nfc_active", "nfc_suspend";
 		pinctrl-0 = <&nfc_int_active &nfc_enable_active>;
 		pinctrl-1 = <&nfc_int_suspend &nfc_enable_suspend>;
-		clocks = <&clock_gcc clk_ln_bb_clk3_pin>;
-		clock-names = "ref_clk";
+		/* clocks = <&clock_gcc clk_ln_bb_clk3_pin>; */
+		/* clock-names = "ref_clk"; */
 	};	
 };
 
@@ -438,7 +354,6 @@
 		compatible =  "rockchip,spi_rk_preisp";
 		reg = <0>;
 		spi-max-frequency = <25000000>;
-		spi-fw-frequency = <50000000>; /* 2 times spi-max-frequency*/
 		firmware-nowait-mode = <1>;
 		irq-gpio = <&tlmm 9 0>;
 		reset-gpio = <&tlmm 23 0>;
@@ -529,19 +444,6 @@
 
 &pmi8998_wled {
 	qcom,led-strings-list = [00 01];
-};
-
-&red_led {
-	/delete-property/ linux,default-trigger;
-	qcom,start-idx = <0>;
-	qcom,idx-len = <10>;
-	qcom,duty-pcts = [00 19 32 4b 64
-			64 4b 32 19 00];
-	qcom,use-blink;
-};
-
-&green_led {
-	/delete-property/ linux,default-trigger;
 };
 
 &dsi_dual_nt35597_video {
@@ -909,19 +811,17 @@
 
 //ASUS BSP : Austin_Tsneg Charger +++
 &pmi8998_charger {
-	pinctrl-0 = <&LID_en_active>;
-	pinctrl-1 = <&LID_en_sleep>;
+	//ADCPWREN-gpios01 = <&pmi8950_gpios 1 0x0>;
+	//USBID_CTRL-gpios08 = <&pm8953_gpios 8 0x0>;
 	USBSW_S-gpios85 = <&tlmm 85 0x0>;
 	ADC_VH_EN_5-gpios86 = <&tlmm 86 0x0>;
-	USB_THERMAL_ALERT-gpios79 = <&tlmm 79 0x0>;
-	USB_LOW_IMPEDANCE-gpios63 = <&tlmm 63 0x0>;
-	USB_LID_EN-gpios62 = <&tlmm 62 0x0>;
-	USB_WATER_PROOF-gpios77 = <&tlmm 77 0x0>;
-	PW_ADC_EN-gpios90 = <&tlmm 90 0x0>;
+	//USB_TEMP_ALERT-gpios90 = <&tlmm 90 0x1>;
 };
 //ASUS BSP : Austin_Tsneg Charger ---
 
+//ASUS_BSP_Vibrator +++, AMP enable pin, gpio 60, mark_guo
 &pmi8998_haptics {
 	pinctrl-0 = <&vibrator_en_idle>;
 	pinctrl-1 = <&vibrator_en_active>;
 };
+//ASUS_BSP_Vibrator ---

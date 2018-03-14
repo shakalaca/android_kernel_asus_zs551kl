@@ -170,7 +170,8 @@
 			qcom,fcc-max-ua = <1650000>;
 			qcom,fv-max-uv = <4357000>;
 			qcom,usb-icl-ua = <3000000>;
-			qcom,float-option = <1>;
+			qcom,float-option = <2>;
+			qcom,water-vadc = <&pm8998_vadc>;
 
 			qcom,chgr@1000 {
 				reg = <0x1000 0x100>;
@@ -307,7 +308,7 @@
 					  "msg-rx-discarded";
 
 			qcom,default-sink-caps = <5000 3000>, /* 5V @ 3A */
-						 <9000 2000>; /* 9V @ 3A */
+						 <9000 2000>; /* 9V @ 2A */
 		};
 
 		bcl@4200 {
@@ -350,6 +351,7 @@
 			qcom,fg-chg-term-current = <150>;
 			qcom,fg-sys-term-current = <(-200)>;
 			qcom,hold-soc-while-full;
+			qcom,linearize-soc;
 
 			qcom,fg-jeita-thresholds = <0 10 50 60>;
 			qcom,fg-jeita-hyst-temp = <3>;
@@ -360,7 +362,7 @@
 			qcom,fg-auto-recharge-soc;
 			qcom,fg-recharge-voltage = <4157>;
 			qcom,fg-recharge-soc-thr = <98>;
-
+			qcom,fg-cutoff-current = <100>;
 
 			status = "okay";
 
@@ -558,6 +560,10 @@
 				regulator-min-microvolt = <4600000>;
 				regulator-max-microvolt = <6000000>;
 
+				interrupts = <0x3 0xdc 0x2
+						IRQ_TYPE_EDGE_RISING>;
+				interrupt-names = "ibb-sc-err";
+
 				qcom,qpnp-ibb-min-voltage = <1400000>;
 				qcom,qpnp-ibb-step-size = <100000>;
 				qcom,qpnp-ibb-slew-rate = <2000000>;
@@ -591,8 +597,11 @@
 				regulator-max-microvolt = <6000000>;
 
 				interrupts = <0x3 0xde 0x0
+						IRQ_TYPE_EDGE_RISING>,
+					     <0x3 0xde 0x1
 						IRQ_TYPE_EDGE_RISING>;
-				interrupt-names = "lab-vreg-ok";
+				interrupt-names = "lab-vreg-ok", "lab-sc-err";
+
 				qcom,qpnp-lab-min-voltage = <4600000>;
 				qcom,qpnp-lab-step-size = <100000>;
 				qcom,qpnp-lab-slew-rate = <5000>;
@@ -638,13 +647,13 @@
 			qcom,dim-mode = "hybrid";
 			qcom,hyb-thres = <625>;
 			qcom,sync-dly-us = <800>;
-            qcom,fs-curr-ua = <20000>;
+			qcom,fs-curr-ua = <25000>;
 			qcom,cons-sync-write-delay-us = <1000>;
-			qcom,en-phase-stag;
-			qcom,led-strings-list = [00 01/* 02 03*/];
+			qcom,led-strings-list = [00 01 02 03];
 			qcom,en-ext-pfet-sc-pro;
 			qcom,pmic-revid = <&pmi8998_revid>;
 			qcom,loop-auto-gm-en;
+			qcom,auto-calibration-enable;
 			status = "okay";
 		};
 

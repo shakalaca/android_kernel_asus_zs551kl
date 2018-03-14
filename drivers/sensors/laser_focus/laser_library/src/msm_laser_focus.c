@@ -98,16 +98,14 @@ int Laser_Match_ID(struct msm_laser_focus_ctrl_t *dev_t)
 int32_t PowerUp(struct msm_laser_focus_ctrl_t *dev_t)
 {
 	int rc = 0;
-	//int err = 0;
+	int err = 0;
 
-	/*
 	err = regulator_set_load(dev_t->reg, LASER_MEASURE_CURRENT);
 	if (err < 0) {
 		dev_err(&dev_t->apps_i2c_client->dev, "Failed to set opt mode for vdd reg %d\n", err);
 		return err;
-	}
-	*/
-	LOG_Handler(LOG_CDBG, "%s: skip regulator_set_load\n", __func__);	
+	}	
+	
 	dev_t->laser_focus_state = LASER_FOCUS_POWER_UP;
 
 	/* Set GPIO vdig to high for sku4 */
@@ -128,19 +126,15 @@ int32_t PowerUp(struct msm_laser_focus_ctrl_t *dev_t)
 int32_t PowerDown(struct msm_laser_focus_ctrl_t *dev_t)
 {
 	int32_t rc = 0;
-	//int err = 0;
+	int err = 0;
 
 	/* Check device status */
 	if (dev_t->laser_focus_state != LASER_FOCUS_POWER_DOWN) {
-		/*
 		err = regulator_set_load(dev_t->reg, LASER_STANDBY_CURRENT);
 		if (err < 0) {
 			dev_err(&dev_t->apps_i2c_client->dev, "Failed to set opt mode for vdd reg %d\n", err);
 			return err;
 		}
-		*/		
-		LOG_Handler(LOG_CDBG, "%s: skip regulator_set_load\n", __func__);
-
 		dev_t->laser_focus_state = LASER_FOCUS_POWER_DOWN;
 	}
 

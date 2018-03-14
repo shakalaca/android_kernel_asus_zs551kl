@@ -134,9 +134,9 @@ void device_pm_add(struct device *dev)
 		 dev->bus ? dev->bus->name : "No Bus", dev_name(dev));
 	device_pm_check_callbacks(dev);
 	mutex_lock(&dpm_list_mtx);
-	//if (dev->parent && dev->parent->power.is_prepared)
-	//	dev_warn(dev, "parent %s should not be sleeping\n",
-	//		dev_name(dev->parent));
+	if (dev->parent && dev->parent->power.is_prepared)
+		dev_warn(dev, "parent %s should not be sleeping\n",
+			dev_name(dev->parent));
 	list_add_tail(&dev->power.entry, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
 }
@@ -1037,6 +1037,8 @@ static int __device_suspend_noirq(struct device *dev, pm_message_t state, bool a
 	TRACE_DEVICE(dev);
 	TRACE_SUSPEND(0);
 
+	dpm_wait_for_children(dev, async);
+
 	if (async_error)
 		goto Complete;
 
@@ -1047,8 +1049,6 @@ static int __device_suspend_noirq(struct device *dev, pm_message_t state, bool a
 
 	if (dev->power.syscore || dev->power.direct_complete)
 		goto Complete;
-
-	dpm_wait_for_children(dev, async);
 
 	if (dev->pm_domain) {
 		info = "noirq power domain ";
@@ -1147,10 +1147,8 @@ int dpm_suspend_noirq(pm_message_t state)
 			list_move(&dev->power.entry, &dpm_noirq_list);
 		put_device(dev);
 
-		if (async_error) {
-			pm_dev_err(dev, state, " async_error", error);
+		if (async_error)
 			break;
-		}
 	}
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
@@ -1189,6 +1187,8 @@ static int __device_suspend_late(struct device *dev, pm_message_t state, bool as
 
 	__pm_runtime_disable(dev, false);
 
+	dpm_wait_for_children(dev, async);
+
 	if (async_error)
 		goto Complete;
 
@@ -1199,8 +1199,6 @@ static int __device_suspend_late(struct device *dev, pm_message_t state, bool as
 
 	if (dev->power.syscore || dev->power.direct_complete)
 		goto Complete;
-
-	dpm_wait_for_children(dev, async);
 
 	if (dev->pm_domain) {
 		info = "late power domain ";

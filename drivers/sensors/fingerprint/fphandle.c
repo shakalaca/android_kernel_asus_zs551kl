@@ -45,7 +45,7 @@
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/jiffies.h>
-
+#include <linux/file.h>
 #include <linux/of_gpio.h>
 #include <linux/regulator/consumer.h>
 
@@ -88,7 +88,7 @@ static int g_module_vendor;
 #define vendor_module_gdix_5206 5
 #define vendor_module_gdix_5216 6
 
-extern bool g_Charger_mode;
+//extern bool g_Charger_mode;
 bool g_FP_Disable_Touch = false;
 extern u32 g_update_bl;
 
@@ -103,8 +103,9 @@ struct fp_device_data {
 	unsigned int osvcc_Leo_enable_pin;
 	unsigned int osvcc_Libra_enable_pin;
 	unsigned int module_vendor;
-        int FP_ID1;
-        int FP_ID2;
+	int FP_ID1;
+	int FP_ID2;
+	int power_hint;
 	bool power_init;
 
 	/* picntrl info */
@@ -1479,6 +1480,7 @@ static int goodix_fb_state_chg_callback(struct notifier_block *nb,
 				/*device unavailable */
 				//gf_dev->device_available = 0;
 			}
+
 			break;
 		case FB_BLANK_UNBLANK:
 			if (gf_dev->device_available == 1) {
@@ -1564,10 +1566,13 @@ static void init_FpMaskTouch_Timer(struct fp_device_data *gf_dev)
 
 static void del_FpMaskTouch_Timer(struct fp_device_data *gf_dev)
 {
-	del_timer(&gf_dev->FpMaskTouch_Timer);
-	gf_dev->FpTimer_expires = 0;
-	g_FP_Disable_Touch = false;
-	printk("[JK] Del Disable touch timer\n");
+	if (gf_dev->FpTimer_expires) {
+		del_timer(&gf_dev->FpMaskTouch_Timer);
+		gf_dev->FpTimer_expires = 0;
+		g_FP_Disable_Touch = false;
+		printk("[JK] Del Disable touch timer\n");
+	}
+
 	return;
 }
 
@@ -1856,15 +1861,17 @@ static int fp_sensor_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct fp_device_data *fp = dev_get_drvdata(&pdev->dev);
 
-		printk("[FP] sensor suspend +++\n");
+	printk("[FP] sensor suspend +++\n");
 //		bState = 0;
 
 
-		if ((fp->is_drdy_irq_enabled | fp->irq_enabled) & !fp->irq_wakeup_flag & !g_Charger_mode) {
-			printk("[FP] enable irq wake up  \n");
-			enable_irq_wake(fp->isr_pin);
-			fp->irq_wakeup_flag = true;
-		}
+//	if ((fp->is_drdy_irq_enabled | fp->irq_enabled) & !fp->irq_wakeup_flag & !g_Charger_mode) {
+	if ((fp->is_drdy_irq_enabled | fp->irq_enabled) & !fp->irq_wakeup_flag) {
+
+		printk("[FP] enable irq wake up  \n");
+		enable_irq_wake(fp->isr_pin);
+		fp->irq_wakeup_flag = true;
+	}
 
 
 		printk("[FP] sensor suspend ---\n");
@@ -2022,13 +2029,13 @@ static int fp_gpio_init(struct fp_device_data *pdata)
 	/* request part */
 	if (gpio_request(pdata->drdy_pin, "fp_drdy") < 0) {
 		err = -EBUSY;
-		printk("[FP][%s] gpio request failed ! \n", __func__);
+		printk("[FP][%s] fp_drdy gpio request failed ! \n", __func__);
 		return err;		
 	}
 
 	if (gpio_request(pdata->sleep_pin, "fp_sleep")) {
 		err = -EBUSY;
-		printk("[FP][%s] gpio request failed ! \n", __func__);
+		printk("[FP][%s] fp_sleep gpio request failed ! \n", __func__);
 		goto fp_gpio_init_sleep_pin_failed;
 	}
 #if 0
@@ -2369,7 +2376,8 @@ static int fp_sensor_probe(struct platform_device *pdev)
 	fp_device->power_init = false;
 	fp_device->FpTimer_expires = 0;
 	fp_device->enable_touch_mask = 0;
-        fp_device->FP_ID2 = 0;
+	fp_device->FP_ID2 = 0;
+	fp_device->power_hint = 0;
 	/* Inin status */
 
 	/*status = fp_pars_dt(&pdev->dev, fp_device);*/
@@ -2521,8 +2529,8 @@ static int fp_sensor_probe(struct platform_device *pdev)
 		case vendor_module_gdix_316m:
 		case vendor_module_gdix_5116m:
 		case vendor_module_gdix_3266A:
-                case vendor_module_gdix_5206:
-                case vendor_module_gdix_5216:                
+        case vendor_module_gdix_5206:
+        case vendor_module_gdix_5216:                
 			/* Claim our 256 reserved device numbers.  Then register a class
 			 * that will key udev/mdev to add/remove /dev nodes.  Last, register
 			 * the driver which manages those device numbers.
@@ -2669,26 +2677,23 @@ static int fp_sensor_probe(struct platform_device *pdev)
 				}
 			}
 
-	status = pinctrl_select_state(fp_device->pinctrl, fp_device->pins_active);
+            status = pinctrl_select_state(fp_device->pinctrl, fp_device->pins_active);
 
-	printk("[FP] charging mode status : %d\n", g_Charger_mode);
-	if (g_Charger_mode) {
-		if (fp_power_on(fp_device, false) < 0) {
-			printk("[FP] opps fp_power_on ! \n");
-		}
-	}
+            printk("[Jacob] report status = %d \n", status);
 
-	printk("[Jacob] report status = %d \n", status);
+            pr_info(" status = 0x%x\n", status);
 
-
-			pr_info(" status = 0x%x\n", status);
-//			&gf = fp_device;
-	break;
+            break;
 	}
 
 	g_module_vendor = fp_device->module_vendor;
 
-	printk("[FP] change owner ship end! \n");
+	if (fp_power_on(fp_device, false) < 0) {
+		printk("[FP] opps fp_power_off fail ! \n");
+		goto fp_pars_dt_failed;
+	}
+
+	printk("[FP] Probe end! \n");
 	
 	return 0;
 

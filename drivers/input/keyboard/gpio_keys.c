@@ -3,6 +3,7 @@
  *
  * Copyright 2005 Phil Blundell
  * Copyright 2010, 2011 David Jander <david@protonic.nl>
+ * Copyright (c) 2015, 2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -33,35 +34,20 @@
 #include <linux/spinlock.h>
 #include <linux/pinctrl/consumer.h>
 
-//ASUS BSP Austin_T+++ : Fix DoubleClickVolumeKey sometimes can't bring up panel
-#include <linux/wakelock.h>
+//ASUS BSP Freeddy_Ke+++ Use wakelock to extend input sysnc time.
+#include <linux/wakelock.h>	//For pwr_key_wake_lock();
 static bool g_bResume = 1;
-static struct wake_lock pwr_key_wake_lock;
-//ASUS BSP Austin_T--- : Fix DoubleClickVolumeKey sometimes can't bring up panel
+static struct wake_lock vol_key_wake_lock;
+//ASUS BSP Freeddy_Ke--- Use wakelock to extend input sysnc time.
 
-static struct work_struct __keysavelog_work;
+/* ASUS BSP Freeddy_Ke ++
+* Use g_keycheck_abort in gpio_keys_suspend_noirq, if true, abort this suspend process.
+* Let g_keycheck_abort = 0 when next suspend in suspend_prepare()
+*/
+extern int g_keycheck_abort; //set tag for abort method
 
-//freddy +++ for key porting
-static int g_keycheck_abort = 0; //set tag for abort method
-//freddy --- for key porting
-//freddy +++ for fake key
-enum {
-	DEBUG_REPORT_EVENT = 1U << 0,
-	DEBUG_PAD_EVENT = 1U << 1,
-};
-
-static int debug_mask = DEBUG_REPORT_EVENT;
-module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
-
-
-#define GPIO_KEYS_PRINTK(mask, message, ...) \
-	do { \
-		if ((mask) & debug_mask) \
-			printk(message, ## __VA_ARGS__); \
-	} while (0)
-//freddy --- for fake key
 struct gpio_button_data {
-	struct gpio_keys_button *button; //ASUS BSP Vincent remove const
+	struct gpio_keys_button *button; //Remove const for DEVICE_ATTR(enabled_wakeup/disabled_wakeup)
 	struct input_dev *input;
 
 	struct timer_list release_timer;
@@ -81,22 +67,9 @@ struct gpio_keys_drvdata {
 	struct pinctrl *key_pinctrl;
 	struct input_dev *input;
 	struct mutex disable_lock;
-	int force_trigger;  //ASUS_BSP : Eric
 	struct gpio_button_data data[0];
 };
-void keysavelog_func(struct work_struct *work)
-{
-	int ret = -1;
-	char cmdpath[] = "/system/bin/recvkernelevt";
-	char *argv[] = {cmdpath, "savelogmtp", NULL};
-	char *envp[] = {"HOME=/", "PATH=/sbin:/system/bin:/system/sbin:/vendor/bin", NULL};
 
-	printk("[Debug+++] trigger savelogmtp on userspace\n");
-	ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_EXEC);
-	printk("[Debug---] trigger savelogmtp on userspace, ret = %d\n", ret);
-
-	return;
-}
 
 /*
  * SYSFS interface for enabling/disabling keys and switches:
@@ -367,7 +340,11 @@ static DEVICE_ATTR(disabled_switches, S_IWUSR | S_IRUGO,
 		   gpio_keys_show_disabled_switches,
 		   gpio_keys_store_disabled_switches);
 
-//ASUS BSP : Austin_T +++
+//ASUS BSP : Freddy_Ke +++ "For "
+/*
+* echo keycode(114/115) > /sys/devices/soc/soc:gpio_keys/enabled_wakeup
+* echo keycode > /sys/devices/soc/soc:gpio_keys/disabled_wakeup
+*/
 static ssize_t gpio_keys_wakeup_enable(struct device *dev,
 				struct device_attribute *attr, const char *buf,
 						size_t size, int enable_wakeup)
@@ -412,15 +389,15 @@ static DEVICE_ATTR(enabled_wakeup, S_IWUSR | S_IRUGO,
 static DEVICE_ATTR(disabled_wakeup, S_IWUSR | S_IRUGO,
 						NULL,
 						gpio_keys_store_disabled_wakeup);
-//ASUS BSP : Austin_T ---
+//ASUS BSP : Freddy_Ke ---
 
 static struct attribute *gpio_keys_attrs[] = {
 	&dev_attr_keys.attr,
 	&dev_attr_switches.attr,
 	&dev_attr_disabled_keys.attr,
 	&dev_attr_disabled_switches.attr,
-	&dev_attr_enabled_wakeup.attr,		//ASUS BSP : Austin_T +++
-        &dev_attr_disabled_wakeup.attr,		//ASUS BSP : Austin_T +++
+	&dev_attr_enabled_wakeup.attr,		//ASUS BSP : Freddy_Ke +++
+	&dev_attr_disabled_wakeup.attr,		//ASUS BSP : Freddy_Ke +++
 	NULL,
 };
 
@@ -428,74 +405,36 @@ static struct attribute_group gpio_keys_attr_group = {
 	.attrs = gpio_keys_attrs,
 };
 
-
-unsigned int b_press = 0; //ASUS_BSP : Eric
-static bool kvup = false;
-static int kdown_count = 0;
-
 static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 {
 	const struct gpio_keys_button *button = bdata->button;
 	struct input_dev *input = bdata->input;
 	unsigned int type = button->type ?: EV_KEY;
-	int state = gpio_get_value_cansleep(button->gpio);
+	int state;
 
+	state = (__gpio_get_value(button->gpio) ? 1 : 0) ^ button->active_low;
 	if (state < 0) {
 		dev_err(input->dev.parent, "failed to get gpio state\n");
 		return;
 	}
 
-	state = (state ? 1 : 0) ^ button->active_low;
 	printk("[Keys][gpio_keys.c] keycode=%d, state=%s\n",
 		button->code, state?"press":"release");  //ASUS BSP Vincent +++
+
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
 	} else {
 		input_event(input, type, button->code, !!state);
-
-		if (button->code == KEY_VOLUMEUP) {
-			if(state) {
-				kvup = true;
-			} else {
-				kvup = false;
-				kdown_count = 0;
-			}
-		}
-
-		if (button->code == KEY_VOLUMEDOWN) {
-			if(state && kvup) {
-				kdown_count++;
-				printk("[Debug] Prepare to trigger savelogmtp on userspace: volumn down count: %d\n", kdown_count);
-
-				if(kdown_count == 10) {
-					printk("[Debug] kernel trigger savelogmtp on userspace: \n");
-					schedule_work(&__keysavelog_work);
-				}
-			}
-		}
-
 		if(state) {
-			//ASUS BSP Austin_T+++ : Fix DoubleClickVolumeKey sometimes can't bring up panel
+			//ASUS BSP Freddy_Ke+++ Use wakelock to extend input sysnc time.
 			if ((button->code == KEY_VOLUMEUP) || (button->code == KEY_VOLUMEDOWN)) {
 				printk("[Gpio_keys]vol_key:%x,pm sts:%x,\r\n", state, g_bResume);
-				wake_lock_timeout(&pwr_key_wake_lock, 3 * HZ);
-				printk("[Gpio_keys]Wakelock 3 sec for vol_key \n");
+				wake_lock_timeout(&vol_key_wake_lock, msecs_to_jiffies(3000));
+				//printk("[Gpio_keys]Wakelock 3 sec for vol_key \n");
 			}
-			//ASUS BSP Austin_T--- : Fix DoubleClickVolumeKey sometimes can't bring up panel
+			//ASUS BSP Freddy_Ke--- Use wakelock to extend input sysnc time.
 
-			if(button->code == 114)
-				b_press |= 0x01;
-
-			if(button->code == 115)
-				b_press |= 0x02;
-		}
-		else {
-			if(button->code == 114)
-				b_press &= ~(0x01);
-
-			if(button->code == 115)
-				b_press &= ~(0x02);
 		}
 	}
 	input_sync(input);
@@ -512,21 +451,14 @@ static void gpio_keys_gpio_work_func(struct work_struct *work)
 		pm_relax(bdata->input->dev.parent);
 }
 
-
-
-
-
-
-
 static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 {
 	struct gpio_button_data *bdata = dev_id;
-//ASUS BSP freddy+++ fix TT 281235:Power key suspend/resume fail
-	//const struct gpio_keys_button *button = bdata->button;
-	//int state = (gpio_get_value(button->gpio) ? 1 : 0) ^ button->active_low;//memo button->active_low==1;
+
 	BUG_ON(irq != bdata->irq);
-	g_keycheck_abort = 1;
-//ASUS BSP freddy--- fix TT 281235:Power key suspend/resume fail
+
+	g_keycheck_abort = 1;// Check this flag in gpio_keys_suspend_noirq, if true, abort this suspend process.
+
 	if (bdata->button->wakeup)
 		pm_stay_awake(bdata->input->dev.parent);
 
@@ -534,7 +466,6 @@ static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 			 &bdata->work,
 			 msecs_to_jiffies(bdata->software_debounce));
 
-	//printk("[Gpio_keys]debouncing,irq_number=%d key state=%d \n",irq, state);
 	return IRQ_HANDLED;
 }
 
@@ -601,7 +532,7 @@ static void gpio_keys_quiesce_key(void *data)
 static int gpio_keys_setup_key(struct platform_device *pdev,
 				struct input_dev *input,
 				struct gpio_button_data *bdata,
-				struct gpio_keys_button *button) //ASUS BSP Vincent remove const
+				struct gpio_keys_button *button)	//Remove const for DEVICE_ATTR(enabled_wakeup/disabled_wakeup)
 {
 	const char *desc = button->desc ? button->desc : "gpio_keys";
 	struct device *dev = &pdev->dev;
@@ -703,7 +634,9 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 
 	return 0;
 }
-/*
+
+/*ASUS_BSP Freddy++ 
+* "Dont need report key during driver probe fun."
 static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
 {
 	struct input_dev *input = ddata->input;
@@ -716,7 +649,6 @@ static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
 	}
 	input_sync(input);
 }
-
 */
 
 static int gpio_keys_pinctrl_configure(struct gpio_keys_drvdata *ddata,
@@ -754,7 +686,6 @@ static int gpio_keys_pinctrl_configure(struct gpio_keys_drvdata *ddata,
 	return 0;
 }
 
-
 static int gpio_keys_open(struct input_dev *input)
 {
 	struct gpio_keys_drvdata *ddata = input_get_drvdata(input);
@@ -768,7 +699,7 @@ static int gpio_keys_open(struct input_dev *input)
 	}
 
 	/* Report current state of buttons that are connected to GPIOs */
-	//gpio_keys_report_state(ddata);
+	//gpio_keys_report_state(ddata); Dont need report key
 
 	return 0;
 }
@@ -818,6 +749,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->nbuttons = nbuttons;
 
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
+	pdata->name = of_get_property(node, "input-name", NULL);
+	pdata->use_syscore = of_property_read_bool(node, "use-syscore");
 
 	i = 0;
 	for_each_child_of_node(node, pp) {
@@ -864,7 +797,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		button->can_disable = !!of_get_property(pp, "linux,can-disable", NULL);
 
 		if (of_property_read_u32(pp, "debounce-interval",
-					 &button->debounce_interval))
+					&button->debounce_interval))
 			button->debounce_interval = 5;
 	}
 
@@ -964,7 +897,7 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < pdata->nbuttons; i++) {
-		struct gpio_keys_button *button = &pdata->buttons[i]; //ASUS BSP Vincent remover const
+		struct gpio_keys_button *button = &pdata->buttons[i]; //Remove const for DEVICE_ATTR(enabled_wakeup/disabled_wakeup)
 		struct gpio_button_data *bdata = &ddata->data[i];
 
 		error = gpio_keys_setup_key(pdev, input, bdata, button);
@@ -990,10 +923,11 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	}
 
 	device_init_wakeup(&pdev->dev, wakeup);
-	wake_lock_init(&pwr_key_wake_lock, WAKE_LOCK_SUSPEND, "pwr_key_lock");
-	printk(KERN_INFO "[Gpio_keys]Initialize a wakelock for gpio_key\r\n");
+
+	wake_lock_init(&vol_key_wake_lock, WAKE_LOCK_SUSPEND, "vol_key_lock");
 
 	printk("[Keys][gpio_keys.c] gpio_keys_probe() ---\n");
+
 	return 0;
 
 err_remove_group:
@@ -1023,6 +957,7 @@ static int gpio_keys_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
+
 static int gpio_keys_suspend(struct device *dev)
 {
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
@@ -1084,11 +1019,11 @@ static int gpio_keys_resume(struct device *dev)
 	if (error)
 		return error;
 
-	//gpio_keys_report_state(ddata);
+	//gpio_keys_report_state(ddata);	//Dont need report key during resume
 	return 0;
 }
 
-//ASUS BSP Austin_T+++ : Fix DoubleClickVolumeKey sometimes can't bring up panel
+/*ASUS_BSP Freddy ++ */
 static int gpio_keys_suspend_noirq(struct device *dev)
 {
 
@@ -1100,25 +1035,16 @@ static int gpio_keys_suspend_noirq(struct device *dev)
 
 static int gpio_keys_resume_noirq(struct device *dev)
 {
-	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
+//	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
 
-	ddata->force_trigger = 1;
+	//ddata->force_trigger = 1;
 	g_bResume = 1;
 	printk("[Gpio_keys]gpio_keys_resume_noirq\n");
 
 	return 0;
 }
 
-static const struct dev_pm_ops gpio_keys_pm_ops = {
-	.suspend	= gpio_keys_suspend,
-	.resume		= gpio_keys_resume,
-	.suspend_noirq  = gpio_keys_suspend_noirq,
-	.resume_noirq   = gpio_keys_resume_noirq,
-};
-
 #else
-
-static void gpio_keys_syscore_resume(void){}
 
 static int gpio_keys_suspend(struct device *dev)
 {
@@ -1134,23 +1060,32 @@ static int gpio_keys_resume(struct device *dev)
 
 //static SIMPLE_DEV_PM_OPS(gpio_keys_pm_ops, gpio_keys_suspend, gpio_keys_resume);
 
+static const struct dev_pm_ops gpio_keys_pm_ops = {
+	.suspend	= gpio_keys_suspend,
+	.resume		= gpio_keys_resume,
+	.suspend_noirq  = gpio_keys_suspend_noirq,
+	.resume_noirq   = gpio_keys_resume_noirq,
+};
+
+/*ASUS_BSP Freddy --*/
+
 static struct platform_driver gpio_keys_device_driver = {
 	.probe		= gpio_keys_probe,
 	.remove		= gpio_keys_remove,
 	.driver		= {
 		.name	= "gpio-keys",
 		.owner	= THIS_MODULE,
+
 #ifdef CONFIG_PM_SLEEP
 		.pm	= &gpio_keys_pm_ops,
 #endif
+
 		.of_match_table = of_match_ptr(gpio_keys_of_match),
 	}
 };
-//ASUS BSP Austin_T--- : Fix DoubleClickVolumeKey sometimes can't bring up panel
 
 static int __init gpio_keys_init(void)
 {
-	INIT_WORK(&__keysavelog_work, keysavelog_func);
 	return platform_driver_register(&gpio_keys_device_driver);
 }
 

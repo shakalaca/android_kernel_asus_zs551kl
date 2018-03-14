@@ -142,6 +142,7 @@
 #define CORE_START_CDC_TRAFFIC		(1 << 6)
 
 #define CORE_PWRSAVE_DLL	(1 << 3)
+#define CORE_FIFO_ALT_EN	(1 << 10)
 #define CORE_CMDEN_HS400_INPUT_MASK_CNT (1 << 13)
 
 #define CORE_DDR_CAL_EN		(1 << 0)
@@ -166,8 +167,6 @@
 #define NUM_TUNING_PHASES		16
 #define MAX_DRV_TYPES_SUPPORTED_HS200	4
 #define MSM_AUTOSUSPEND_DELAY_MS 100
-
-int detect_pin=0; //ASUS_BSP Deeo : Record status gpio
 
 struct sdhci_msm_offset {
 	u32 CORE_MCI_DATA_CNT;
@@ -313,7 +312,7 @@ void sdhci_msm_writel_relaxed(u32 val, struct sdhci_host *host, u32 offset)
 }
 
 /* Timeout value to avoid infinite waiting for pwr_irq */
-#define MSM_PWR_IRQ_TIMEOUT_MS 30000
+#define MSM_PWR_IRQ_TIMEOUT_MS 5000
 
 static const u32 tuning_block_64[] = {
 	0x00FF0FFF, 0xCCC3CCFF, 0xFFCC3CC3, 0xEFFEFFFE,
@@ -1159,6 +1158,7 @@ int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 	bool drv_type_changed = false;
 	struct mmc_card *card = host->mmc->card;
 	int sts_retry;
+	u8 last_good_phase = 0;
 
 	/*
 	 * Tuning is required for SDR104, HS200 and HS400 cards and
@@ -1244,6 +1244,22 @@ retry:
 		mmc_wait_for_req(mmc, &mrq);
 
 		if (card && (cmd.error || data.error)) {
+			/*
+			 * Set the dll to last known good phase while sending
+			 * status command to ensure that status command won't
+			 * fail due to bad phase.
+			 */
+			if (tuned_phase_cnt)
+				last_good_phase =
+					tuned_phases[tuned_phase_cnt-1];
+			else if (msm_host->saved_tuning_phase !=
+					INVALID_TUNING_PHASE)
+				last_good_phase = msm_host->saved_tuning_phase;
+
+			rc = msm_config_cm_dll_phase(host, last_good_phase);
+			if (rc)
+				goto kfree;
+
 			sts_cmd.opcode = MMC_SEND_STATUS;
 			sts_cmd.arg = card->rca << 16;
 			sts_cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
@@ -1843,12 +1859,10 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	}
 
 	pdata->status_gpio = of_get_named_gpio_flags(np, "cd-gpios", 0, &flags);
-	if (gpio_is_valid(pdata->status_gpio) & !(flags & OF_GPIO_ACTIVE_LOW)){
+	if (gpio_is_valid(pdata->status_gpio) && !(flags & OF_GPIO_ACTIVE_LOW)){
 		printk("[SD] MMC_CAP2_CD_ACTIVE_HIGH\n");
 		pdata->caps2 |= MMC_CAP2_CD_ACTIVE_HIGH;
 	}
-	detect_pin = pdata->status_gpio; //ASUS_BSP Deeo : Record status gpio
-
 	of_property_read_u32(np, "qcom,bus-width", &bus_width);
 	if (bus_width == 8)
 		pdata->mmc_bus_width = MMC_CAP_8_BIT_DATA;
@@ -1981,13 +1995,12 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	sdhci_msm_pm_qos_parse(dev, pdata);
 
 	if (of_get_property(np, "qcom,core_3_0v_support", NULL))
-		pdata->core_3_0v_support = true;
+		msm_host->core_3_0v_support = true;
 
 	pdata->sdr104_wa = of_property_read_bool(np, "qcom,sdr104-wa");
 
 	return pdata;
 out:
-	detect_pin = 0; //ASUS_BSP Deeo : reset detect_pin
 	return NULL;
 }
 
@@ -2565,7 +2578,6 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	unsigned long flags;
 	int retry = 10;
 
-	printk("[MMC][%s] host : %p\n", __func__, host);
 	irq_status = sdhci_msm_readb_relaxed(host,
 		msm_host_offset->CORE_PWRCTL_STATUS);
 
@@ -2673,7 +2685,9 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	 */
 	mb();
 
-	if ((io_level & REQ_IO_HIGH) && (msm_host->caps_0 & CORE_3_0V_SUPPORT))
+	if ((io_level & REQ_IO_HIGH) &&
+			(msm_host->caps_0 & CORE_3_0V_SUPPORT) &&
+			!msm_host->core_3_0v_support)
 		writel_relaxed((readl_relaxed(host->ioaddr +
 				msm_host_offset->CORE_VENDOR_SPEC) &
 				~CORE_IO_PAD_PWR_SWITCH), host->ioaddr +
@@ -2696,7 +2710,6 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 	complete(&msm_host->pwr_irq_completion);
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	//printk("[MMC] pwr_irq_completion->done : %d\n", msm_host->pwr_irq_completion.done);
 	return IRQ_HANDLED;
 }
 
@@ -2776,7 +2789,6 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 	u32 io_sig_sts = SWITCHABLE_SIGNALLING_VOL;
 
 	spin_lock_irqsave(&host->lock, flags);
-	//sdhci_msm_dump_pwr_ctrl_regs(host);
 	pr_debug("%s: %s: request %d curr_pwr_state %x curr_io_level %x\n",
 			mmc_hostname(host->mmc), __func__, req_type,
 			msm_host->curr_pwr_state, msm_host->curr_io_level);
@@ -2819,13 +2831,10 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 	 * next call to wait_for_completion returns immediately
 	 * without actually waiting for the IRQ to be handled.
 	 */
-	//printk("[MMC] done : %d, pwr_irq_completion->done : %d\n", done, msm_host->pwr_irq_completion.done);
-	printk("[MMC][%s]  host : %p\n", __func__, host);
 	if (done)
 		init_completion(&msm_host->pwr_irq_completion);
 	else if (!wait_for_completion_timeout(&msm_host->pwr_irq_completion,
 				msecs_to_jiffies(MSM_PWR_IRQ_TIMEOUT_MS))) {
-		//sdhci_msm_dump_pwr_ctrl_regs(host);
 		__WARN_printf("%s: request(%d) timed out waiting for pwr_irq\n",
 					mmc_hostname(host->mmc), req_type);
 		MMC_TRACE(host->mmc,
@@ -2833,7 +2842,6 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 			__func__, req_type);
 		sdhci_msm_dump_pwr_ctrl_regs(host);
 	}
-
 	pr_debug("%s: %s: request %d done\n", mmc_hostname(host->mmc),
 			__func__, req_type);
 }
@@ -3351,6 +3359,21 @@ static void sdhci_msm_cmdq_dump_debug_ram(struct sdhci_host *host)
 	pr_err("-------------------------\n");
 }
 
+static void sdhci_msm_cache_debug_data(struct sdhci_host *host)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_debug_data *cached_data = &msm_host->cached_data;
+
+	memcpy(&cached_data->copy_mmc, msm_host->mmc,
+		sizeof(struct mmc_host));
+	if (msm_host->mmc->card)
+		memcpy(&cached_data->copy_card, msm_host->mmc->card,
+			sizeof(struct mmc_card));
+	memcpy(&cached_data->copy_host, host,
+		sizeof(struct sdhci_host));
+}
+
 void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -3363,6 +3386,7 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 	u32 debug_reg[MAX_TEST_BUS] = {0};
 	u32 sts = 0;
 
+	sdhci_msm_cache_debug_data(host);
 	pr_info("----------- VENDOR REGISTER DUMP -----------\n");
 	if (host->cq_host)
 		sdhci_msm_cmdq_dump_debug_ram(host);
@@ -3944,8 +3968,8 @@ void sdhci_msm_pm_qos_cpu_init(struct sdhci_host *host,
 		group->req.type = PM_QOS_REQ_AFFINE_CORES;
 		cpumask_copy(&group->req.cpus_affine,
 			&msm_host->pdata->pm_qos_data.cpu_group_map.mask[i]);
-		/* For initialization phase, set the performance mode latency */
-		group->latency = latency[i].latency[SDHCI_PERFORMANCE_MODE];
+		/* We set default latency here for all pm_qos cpu groups. */
+		group->latency = PM_QOS_DEFAULT_VALUE;
 		pm_qos_add_request(&group->req, PM_QOS_CPU_DMA_LATENCY,
 			group->latency);
 		pr_info("%s (): voted for group #%d (mask=0x%lx) latency=%d (0x%p)\n",
@@ -4157,11 +4181,11 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 	 * starts coming.
 	 */
 	if ((major == 1) && ((minor == 0x42) || (minor == 0x46) ||
-				(minor == 0x49)))
+				(minor == 0x49) || (minor >= 0x6b)))
 		msm_host->use_14lpp_dll = true;
 
 	/* Fake 3.0V support for SDIO devices which requires such voltage */
-	if (msm_host->pdata->core_3_0v_support) {
+	if (msm_host->core_3_0v_support) {
 		caps |= CORE_3_0V_SUPPORT;
 			writel_relaxed((readl_relaxed(host->ioaddr +
 			SDHCI_CAPABILITIES) | caps), host->ioaddr +
@@ -4182,8 +4206,10 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 	/* keep track of the value in SDHCI_CAPABILITIES */
 	msm_host->caps_0 = caps;
 
-	if ((major == 1) && (minor >= 0x6b))
+	if ((major == 1) && (minor >= 0x6b)) {
 		msm_host->ice_hci_support = true;
+		host->cdr_support = true;
+	}
 }
 
 #ifdef CONFIG_MMC_CQ_HCI
@@ -4489,6 +4515,14 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	writel_relaxed(CORE_VENDOR_SPEC_POR_VAL,
 	host->ioaddr + msm_host_offset->CORE_VENDOR_SPEC);
 
+	/*
+	 * Ensure SDHCI FIFO is enabled by disabling alternative FIFO
+	 */
+	writel_relaxed((readl_relaxed(host->ioaddr +
+			msm_host_offset->CORE_VENDOR_SPEC3) &
+			~CORE_FIFO_ALT_EN), host->ioaddr +
+			msm_host_offset->CORE_VENDOR_SPEC3);
+
 	if (!msm_host->mci_removed) {
 		/* Set HC_MODE_EN bit in HC_MODE register */
 		writel_relaxed(HC_MODE_EN, (msm_host->core_mem + CORE_HC_MODE));
@@ -4760,6 +4794,9 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	}
 	//ASUS BSP Deeo : add for sd_status ---
 
+	if (sdhci_msm_is_bootdevice(&pdev->dev))
+		mmc_flush_detect_work(host->mmc);
+
 	/* Successful initialization */
 	goto out;
 
@@ -4825,8 +4862,6 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
 		sdhci_msm_bus_unregister(msm_host);
 	}
-
-	detect_pin = 0; //ASUS_BSP Deeo : reset detect_pin
 	return 0;
 }
 
@@ -4893,7 +4928,6 @@ static int sdhci_msm_runtime_suspend(struct device *dev)
 	sdhci_cfg_irq(host, false, true);
 
 defer_disable_host_irq:
-	//printk("[MMC] disable_irq : msm_host->pwr_irq.\n");
 	disable_irq(msm_host->pwr_irq);
 
 	/*
@@ -4944,7 +4978,6 @@ skip_ice_resume:
 	sdhci_cfg_irq(host, true, true);
 
 defer_enable_host_irq:
-	//printk("[MMC] enable_irq : msm_host->pwr_irq.\n");
 	enable_irq(msm_host->pwr_irq);
 
 	trace_sdhci_msm_runtime_resume(mmc_hostname(host->mmc), 0,
@@ -5041,7 +5074,7 @@ static int sdhci_msm_suspend_noirq(struct device *dev)
 }
 
 static const struct dev_pm_ops sdhci_msm_pmops = {
-	SET_SYSTEM_SLEEP_PM_OPS(sdhci_msm_suspend, sdhci_msm_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(sdhci_msm_suspend, sdhci_msm_resume)
 	SET_RUNTIME_PM_OPS(sdhci_msm_runtime_suspend, sdhci_msm_runtime_resume,
 			   NULL)
 	.suspend_noirq = sdhci_msm_suspend_noirq,
@@ -5065,6 +5098,7 @@ static struct platform_driver sdhci_msm_driver = {
 	.driver		= {
 		.name	= "sdhci_msm",
 		.owner	= THIS_MODULE,
+		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = sdhci_msm_dt_match,
 		.pm	= SDHCI_MSM_PMOPS,
 	},

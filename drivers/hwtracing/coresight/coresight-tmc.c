@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, 2016-2017 The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012, 2016-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1140,6 +1140,7 @@ static int tmc_read_prepare(struct tmc_drvdata *drvdata)
 	unsigned long flags;
 	enum tmc_mode mode;
 
+	mutex_lock(&drvdata->mem_lock);
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 	if (!drvdata->sticky_enable) {
 		dev_err(drvdata->dev, "enable tmc once before reading\n");
@@ -1187,7 +1188,6 @@ static void tmc_read_unprepare(struct tmc_drvdata *drvdata)
 	unsigned long flags;
 	enum tmc_mode mode;
 
-	mutex_lock(&drvdata->mem_lock);
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 	if (!drvdata->enable)
 		goto out;

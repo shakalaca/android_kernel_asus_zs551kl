@@ -49,7 +49,7 @@
 #define SRAM_READ		"fg_sram_read"
 #define SRAM_WRITE		"fg_sram_write"
 #define PROFILE_LOAD		"fg_profile_load"
-#define DELTA_SOC		"fg_delta_soc"
+#define TTF_PRIMING		"fg_ttf_priming"
 
 /* Delta BSOC irq votable reasons */
 #define DELTA_BSOC_IRQ_VOTER	"fg_delta_bsoc_irq"
@@ -80,6 +80,8 @@
 #define SLOPE_LIMIT_COEFF_MAX		31
 
 #define BATT_THERM_NUM_COEFFS		3
+
+#define MAX_CC_STEPS			20
 
 /* Debug flag definitions */
 enum fg_debug_flag {
@@ -165,6 +167,7 @@ enum fg_sram_param_id {
 	FG_SRAM_SYS_TERM_CURR,
 	FG_SRAM_CHG_TERM_CURR,
 	FG_SRAM_CHG_TERM_BASE_CURR,
+	FG_SRAM_CUTOFF_CURR,
 	FG_SRAM_DELTA_MSOC_THR,
 	FG_SRAM_DELTA_BSOC_THR,
 	FG_SRAM_RECHARGE_SOC_THR,
@@ -228,10 +231,16 @@ enum esr_timer_config {
 	NUM_ESR_TIMERS,
 };
 
+enum ttf_mode {
+	TTF_MODE_NORMAL = 0,
+	TTF_MODE_QNOVO,
+};
+
 /* DT parameters for FG device */
 struct fg_dt_props {
 	bool	force_load_profile;
 	bool	hold_soc_while_full;
+	bool	linearize_soc;
 	bool	auto_recharge_soc;
 	int	cutoff_volt_mv;
 	int	empty_volt_mv;
@@ -239,6 +248,7 @@ struct fg_dt_props {
 	int	chg_term_curr_ma;
 	int	chg_term_base_curr_ma;
 	int	sys_term_curr_ma;
+	int	cutoff_curr_ma;
 	int	delta_soc_thr;
 	int	recharge_soc_thr;
 	int	recharge_volt_thr_mv;
@@ -265,6 +275,7 @@ struct fg_dt_props {
 	int	slope_limit_temp;
 	int	esr_pulse_thresh_ma;
 	int	esr_meas_curr_ma;
+	int	ki_coeff_full_soc_dischg;
 	int	jeita_thresholds[NUM_JEITA_LEVELS];
 	int	ki_coeff_soc[KI_COEFF_SOC_LEVELS];
 	int	ki_coeff_med_dischg[KI_COEFF_SOC_LEVELS];
@@ -309,14 +320,29 @@ struct fg_irq_info {
 };
 
 struct fg_circ_buf {
-	int	arr[20];
+	int	arr[10];
 	int	size;
 	int	head;
+};
+
+struct fg_cc_step_data {
+	int arr[MAX_CC_STEPS];
+	int sel;
 };
 
 struct fg_pt {
 	s32 x;
 	s32 y;
+};
+
+struct ttf {
+	struct fg_circ_buf	ibatt;
+	struct fg_circ_buf	vbatt;
+	struct fg_cc_step_data	cc_step;
+	struct mutex		lock;
+	int			mode;
+	int			last_ttf;
+	s64			last_ms;
 };
 
 static const struct fg_pt fg_ln_table[] = {
@@ -358,6 +384,7 @@ struct fg_chip {
 	struct power_supply	*usb_psy;
 	struct power_supply	*dc_psy;
 	struct power_supply	*parallel_psy;
+	struct power_supply	*pc_port_psy;
 	struct iio_channel	*batt_id_chan;
 	struct iio_channel	*die_temp_chan;
 	struct fg_memif		*sram;
@@ -374,9 +401,9 @@ struct fg_chip {
 	struct fg_cyc_ctr_data	cyc_ctr;
 	struct notifier_block	nb;
 	struct fg_cap_learning  cl;
+	struct ttf		ttf;
 	struct mutex		bus_lock;
 	struct mutex		sram_rw_lock;
-	struct mutex		batt_avg_lock;
 	struct mutex		charge_full_lock;
 	struct mutex		charge_status_lock;
 	u32			batt_soc_base;
@@ -387,15 +414,16 @@ struct fg_chip {
 	int			batt_id_ohms;
 	int			ki_coeff_full_soc;
 	int			charge_status;
-	int			prev_charge_status;
 	int			charge_done;
 	int			charge_type;
+	int			online_status;
 	int			last_soc;
 	int			last_batt_temp;
 	int			health;
 	int			maint_soc;
 	int			delta_soc;
 	int			last_msoc;
+	int			last_recharge_volt_mv;
 	int			esr_timer_charging_default[NUM_ESR_TIMERS];
 	enum slope_limit_status	slope_limit_sts;
 	bool			profile_available;
@@ -415,11 +443,8 @@ struct fg_chip {
 	struct completion	soc_ready;
 	struct delayed_work	profile_load_work;
 	struct work_struct	status_change_work;
-	struct work_struct	cycle_count_work;
-	struct delayed_work	batt_avg_work;
+	struct delayed_work	ttf_work;
 	struct delayed_work	sram_dump_work;
-	struct fg_circ_buf	ibatt_circ_buf;
-	struct fg_circ_buf	vbatt_circ_buf;
 };
 
 /* Debugfs data structures are below */
@@ -477,5 +502,6 @@ extern bool is_qnovo_en(struct fg_chip *chip);
 extern void fg_circ_buf_add(struct fg_circ_buf *, int);
 extern void fg_circ_buf_clr(struct fg_circ_buf *);
 extern int fg_circ_buf_avg(struct fg_circ_buf *, int *);
+extern int fg_circ_buf_median(struct fg_circ_buf *, int *);
 extern int fg_lerp(const struct fg_pt *, size_t, s32, s32 *);
 #endif

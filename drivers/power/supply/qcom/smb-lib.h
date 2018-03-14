@@ -140,8 +140,13 @@ struct smb_irq_info {
 static const unsigned int smblib_extcon_cable[] = {
 	EXTCON_USB,
 	EXTCON_USB_HOST,
+	EXTCON_USB_CC,
+	EXTCON_USB_SPEED,
 	EXTCON_NONE,
 };
+
+/* EXTCON_USB and EXTCON_USB_HOST are mutually exclusive */
+static const u32 smblib_extcon_exclusive[] = {0x3, 0};
 
 struct smb_regulator {
 	struct regulator_dev	*rdev;
@@ -191,9 +196,6 @@ struct smb_params {
 	struct smb_chg_param	dc_icl_div2_mid_hv;
 	struct smb_chg_param	dc_icl_div2_hv;
 	struct smb_chg_param	jeita_cc_comp;
-	struct smb_chg_param	step_soc_threshold[4];
-	struct smb_chg_param	step_soc;
-	struct smb_chg_param	step_cc_delta[5];
 	struct smb_chg_param	freq_buck;
 	struct smb_chg_param	freq_boost;
 };
@@ -288,7 +290,6 @@ struct smb_charger {
 	struct work_struct	rdstd_cc2_detach_work;
 	struct delayed_work	hvdcp_detect_work;
 	struct delayed_work	ps_change_timeout_work;
-	struct delayed_work	step_soc_req_work;
 	struct delayed_work	clear_hdc_work;
 	struct work_struct	otg_oc_work;
 	struct work_struct	vconn_oc_work;
@@ -308,6 +309,7 @@ struct smb_charger {
 	struct delayed_work asus_water_proof_work;
 	struct delayed_work asus_batt_RTC_work;
 	struct delayed_work asus_set_flow_flag_work;
+	struct delayed_work asus_cable_check_work;
 
 	/* cached status */
 	int			voltage_min_uv;
@@ -321,6 +323,7 @@ struct smb_charger {
 	int			dcp_icl_ua;
 	int			fake_capacity;
 	bool			step_chg_enabled;
+	bool			sw_jeita_enabled;
 	bool			is_hdc;
 	bool			chg_done;
 	bool			micro_usb_mode;
@@ -339,6 +342,11 @@ struct smb_charger {
 	int			fake_input_current_limited;
 	bool			pr_swap_in_progress;
 	int			typec_mode;
+	int			usb_icl_change_irq_enabled;
+	u32			jeita_status;
+	u8			float_cfg;
+	bool			use_extcon;
+	bool			otg_present;
 
 	/* workaround flag */
 	u32			wa_flags;
@@ -405,9 +413,6 @@ int smblib_vconn_regulator_is_enabled(struct regulator_dev *rdev);
 irqreturn_t smblib_handle_debug(int irq, void *data);
 irqreturn_t smblib_handle_otg_overcurrent(int irq, void *data);
 irqreturn_t smblib_handle_chg_state_change(int irq, void *data);
-irqreturn_t smblib_handle_step_chg_state_change(int irq, void *data);
-irqreturn_t smblib_handle_step_chg_soc_update_fail(int irq, void *data);
-irqreturn_t smblib_handle_step_chg_soc_update_request(int irq, void *data);
 irqreturn_t smblib_handle_batt_temp_changed(int irq, void *data);
 irqreturn_t smblib_handle_batt_psy_changed(int irq, void *data);
 irqreturn_t smblib_handle_usb_psy_changed(int irq, void *data);
@@ -445,11 +450,8 @@ int smblib_get_prop_batt_current_now(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_batt_temp(struct smb_charger *chg,
 				union power_supply_propval *val);
-int smblib_get_prop_batt_id(struct smb_charger *chg,
+int smblib_get_prop_batt_charge_counter(struct smb_charger *chg,
 				union power_supply_propval *val);
-int smblib_get_prop_step_chg_step(struct smb_charger *chg,
-				union power_supply_propval *val);
-
 int smblib_set_prop_input_suspend(struct smb_charger *chg,
 				const union power_supply_propval *val);
 int smblib_set_prop_batt_capacity(struct smb_charger *chg,
@@ -474,11 +476,9 @@ int smblib_get_prop_usb_online(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_usb_suspend(struct smb_charger *chg,
 				union power_supply_propval *val);
+int smblib_get_prop_usb_voltage_max(struct smb_charger *chg,
+				union power_supply_propval *val);
 int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
-				union power_supply_propval *val);
-int smblib_get_prop_pd_current_max(struct smb_charger *chg,
-				union power_supply_propval *val);
-int smblib_get_prop_usb_current_max(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_usb_current_now(struct smb_charger *chg,
 				union power_supply_propval *val);
@@ -506,11 +506,11 @@ int smblib_get_prop_charge_qnovo_enable(struct smb_charger *chg,
 			       union power_supply_propval *val);
 int smblib_set_prop_pd_current_max(struct smb_charger *chg,
 				const union power_supply_propval *val);
-int smblib_set_prop_usb_current_max(struct smb_charger *chg,
+int smblib_set_prop_sdp_current_max(struct smb_charger *chg,
 				const union power_supply_propval *val);
-int smblib_set_prop_usb_voltage_min(struct smb_charger *chg,
+int smblib_set_prop_pd_voltage_max(struct smb_charger *chg,
 				const union power_supply_propval *val);
-int smblib_set_prop_usb_voltage_max(struct smb_charger *chg,
+int smblib_set_prop_pd_voltage_min(struct smb_charger *chg,
 				const union power_supply_propval *val);
 int smblib_set_prop_boost_current(struct smb_charger *chg,
 				const union power_supply_propval *val);
@@ -529,9 +529,10 @@ int smblib_set_prop_charge_qnovo_enable(struct smb_charger *chg,
 void smblib_suspend_on_debug_battery(struct smb_charger *chg);
 int smblib_rerun_apsd_if_required(struct smb_charger *chg);
 int smblib_get_prop_fcc_delta(struct smb_charger *chg,
-			       union power_supply_propval *val);
+				union power_supply_propval *val);
 int smblib_icl_override(struct smb_charger *chg, bool override);
 int smblib_dp_dm(struct smb_charger *chg, int val);
+int smblib_disable_hw_jeita(struct smb_charger *chg, bool disable);
 int smblib_rerun_aicl(struct smb_charger *chg);
 int smblib_set_icl_current(struct smb_charger *chg, int icl_ua);
 int smblib_get_icl_current(struct smb_charger *chg, int *icl_ua);

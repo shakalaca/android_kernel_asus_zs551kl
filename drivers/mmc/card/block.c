@@ -1017,7 +1017,7 @@ static int mmc_blk_ioctl_rpmb_cmd(struct block_device *bdev,
 {
 	struct mmc_blk_ioc_rpmb_data *idata;
 	struct mmc_blk_data *md;
-	struct mmc_card *card;
+	struct mmc_card *card = NULL;
 	struct mmc_command cmd = {0};
 	struct mmc_data data = {0};
 	struct mmc_request mrq = {NULL};
@@ -1173,7 +1173,7 @@ idata_free:
 
 cmd_done:
 	mmc_blk_put(md);
-	if (card->cmdq_init)
+	if (card && card->cmdq_init)
 		wake_up(&card->host->cmdq_ctx.wait);
 	return err;
 }
@@ -1224,15 +1224,15 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 	ioc_err = __mmc_blk_ioctl_cmd(card, md, idata);
 
-	mmc_put_card(card);
-
-	err = mmc_blk_ioctl_copy_to_user(ic_ptr, idata);
-
 	if (mmc_card_cmdq(card)) {
 		if (mmc_cmdq_halt(card->host, false))
 			pr_err("%s: %s: cmdq unhalt failed\n",
 			       mmc_hostname(card->host), __func__);
 	}
+
+	mmc_put_card(card);
+
+	err = mmc_blk_ioctl_copy_to_user(ic_ptr, idata);
 
 cmd_done:
 	mmc_blk_put(md);
@@ -1701,7 +1701,7 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 		mmc_retune_recheck(card->host);
 
 		prev_cmd_status_valid = false;
-		pr_err("%s: error %d sending status command, %sing\n",
+		pr_err_ratelimited("%s: error %d sending status command, %sing\n",
 		       req->rq_disk->disk_name, err, retry ? "retry" : "abort");
 	}
 
@@ -2870,7 +2870,7 @@ static void mmc_blk_packed_hdr_wrq_prep(struct mmc_queue_req *mqrq,
 	struct mmc_blk_data *md = mq->data;
 	struct mmc_packed *packed = mqrq->packed;
 	bool do_rel_wr, do_data_tag;
-	u32 *packed_cmd_hdr;
+	__le32 *packed_cmd_hdr;
 	u8 hdr_blocks;
 	u8 i = 1;
 
@@ -4192,7 +4192,8 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	set_capacity(md->disk, size);
 
 	if (mmc_host_cmd23(card->host)) {
-		if (mmc_card_mmc(card) ||
+		if ((mmc_card_mmc(card) &&
+		     card->csd.mmca_vsn >= CSD_SPEC_VER_3) ||
 		    (mmc_card_sd(card) &&
 		     card->scr.cmds & SD_SCR_CMD23_SUPPORT))
 			md->flags |= MMC_BLK_CMD23;
@@ -4622,6 +4623,10 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 	dev_set_drvdata(&card->dev, md);
 
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	mmc_set_bus_resume_policy(card->host, 1);
+#endif
+
 	if (mmc_add_disk(md))
 		goto out;
 
@@ -4665,6 +4670,9 @@ static void mmc_blk_remove(struct mmc_card *card)
 	pm_runtime_put_noidle(&card->dev);
 	mmc_blk_remove_req(md);
 	dev_set_drvdata(&card->dev, NULL);
+#ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
+	mmc_set_bus_resume_policy(card->host, 0);
+#endif
 }
 
 static int _mmc_blk_suspend(struct mmc_card *card, bool wait)

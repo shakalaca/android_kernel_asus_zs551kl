@@ -10,6 +10,7 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996-v2-liquid.dtb \
 	msm8996-v2-dtp.dtb \
 	msm8996-v3-auto-cdp.dtb \
+	msm8996-v3-auto-adp.dtb \
 	msm8996-v3-pmi8994-cdp.dtb \
 	msm8996-v3-pmi8994-mtp.dtb \
 	msm8996-v3-pmi8994-pmk8001-cdp.dtb \
@@ -27,6 +28,10 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996-v3-dtp.dtb \
 	msm8996-v3-pm8004-mmxf-adp.dtb \
 	msm8996-v3-pm8004-agave-adp.dtb \
+	msm8996-v3-pm8004-agave-adp-lite.dtb \
+	msm8996pro-auto-adp.dtb \
+	msm8996pro-auto-adp-lite.dtb \
+	msm8996pro-auto-cdp.dtb \
 	msm8996pro-pmi8994-cdp.dtb \
 	msm8996pro-pmi8994-mtp.dtb \
 	msm8996pro-pmi8994-pmk8001-cdp.dtb \
@@ -39,6 +44,7 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996pro-pmi8996-mtp.dtb \
 	msm8996pro-pmi8996-pmk8001-cdp.dtb \
 	msm8996pro-pmi8996-pmk8001-mtp.dtb \
+	msm8996pro-v1.1-auto-cdp.dtb \
 	msm8996pro-v1.1-pmi8994-cdp.dtb \
 	msm8996pro-v1.1-pmi8994-mtp.dtb \
 	msm8996pro-v1.1-pmi8994-pmk8001-cdp.dtb \
@@ -51,7 +57,11 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	msm8996pro-v1.1-pmi8996-mtp.dtb \
 	msm8996pro-v1.1-pmi8996-pmk8001-cdp.dtb \
 	msm8996pro-v1.1-pmi8996-pmk8001-mtp.dtb \
+	apq8096pro-auto-cdp.dtb \
+	apq8096pro-v1.1-auto-adp.dtb \
+	apq8096pro-v1.1-auto-adp-lite.dtb \
 	apq8096pro-liquid.dtb \
+	apq8096pro-v1.1-auto-cdp.dtb \
 	msm8996-v3.0-pmi8994-cdp.dtb \
 	msm8996-v3.0-pmi8994-mtp.dtb \
 	msm8996-v3.0-pmi8994-pm8004-cdp.dtb \
@@ -82,6 +92,8 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	apq8096-v3-dragonboard.dtb \
 	apq8096-v3-sbc.dtb \
 	apq8096-v3-auto-dragonboard.dtb \
+	apq8096-v3-auto-adp.dtb \
+	apq8096-v3-auto-cdp.dtb \
 	apq8096-v3.0-pmi8994-cdp.dtb \
 	apq8096-v3.0-pmi8994-mtp.dtb \
 	apq8096-v3.0-pmi8994-pm8004-cdp.dtb \
@@ -102,10 +114,35 @@ dtb-$(CONFIG_ARCH_MSM8996) += msm8996-v2-pmi8994-cdp.dtb \
 	apq8096-v3-pmi8996-mdm9x55-slimbus-mtp.dtb \
 	apq8096-v3-pmi8996-dragonboard.dtb
 
+dtb-$(CONFIG_MSM_GVM_QUIN) += vplatform-lfv-msm8996.dtb
+
+ifeq ($(CONFIG_BUILD_ARM64_DT_OVERLAY),y)
+dtbo-$(CONFIG_ARCH_MSM8998) += \
+	msm8998-cdp-overlay.dtbo \
+	msm8998-mtp-overlay.dtbo \
+	msm8998-v2-cdp-overlay.dtbo \
+	msm8998-v2-mtp-overlay.dtbo \
+	msm8998-v2.1-cdp-overlay.dtbo \
+	msm8998-v2.1-mtp-overlay.dtbo \
+	msm8998-qrd-overlay.dtbo \
+	msm8998-qrd-vr1-overlay.dtbo \
+	msm8998-qrd-skuk-overlay.dtbo
+
+msm8998-cdp-overlay.dtbo-base :=  msm8998.dtb
+msm8998-mtp-overlay.dtbo-base :=  msm8998.dtb
+msm8998-v2-cdp-overlay.dtbo-base :=  msm8998-v2.dtb
+msm8998-v2-mtp-overlay.dtbo-base :=  msm8998-v2.dtb
+msm8998-v2.1-cdp-overlay.dtbo-base :=  msm8998-v2.1.dtb
+msm8998-v2.1-mtp-overlay.dtbo-base :=  msm8998-v2.1.dtb
+msm8998-qrd-overlay.dtbo-base :=  msm8998-qrd.dtb
+msm8998-qrd-vr1-overlay.dtbo-base :=  msm8998-qrd-vr1.dtb
+msm8998-qrd-skuk-overlay.dtbo-base :=  msm8998-qrd-skuk.dtb
+else
 dtb-$(CONFIG_ARCH_MSM8998) += msm8998-mtp.dtb \
-        zs551kl-sr1-msm8998-v2.1-mtp.dtb \
-	zs551kl-evb3-msm8998-v2.1-mtp.dtb \
-	zs551kl-evb-msm8998-mtp.dtb
+        zs551kl-sr1-msm8998-v2.1-mtp.dtb
+endif
+
+dtb-$(CONFIG_ARCH_MSMHAMSTER) += msmhamster-rumi.dtb
 
 dtb-$(CONFIG_ARCH_SDM660) += sdm660-sim.dtb \
 	sdm660-internal-codec-cdp.dtb \
@@ -157,7 +194,34 @@ dtb-$(CONFIG_ARCH_SDM660) += sdm660-sim.dtb \
 	sda658-rcm.dtb \
 	sda658-pm660a-mtp.dtb \
 	sda658-pm660a-cdp.dtb \
-	sda658-pm660a-rcm.dtb
+	sda658-pm660a-rcm.dtb \
+	sdm636-cdp.dtb \
+	sdm636-mtp.dtb \
+	sdm636-qrd.dtb \
+	sdm636-rcm.dtb \
+	sdm636-headset-jacktype-no-cdp.dtb \
+	sdm636-headset-jacktype-no-rcm.dtb \
+	sdm636-internal-codec-cdp.dtb \
+	sdm636-internal-codec-mtp.dtb \
+	sdm636-internal-codec-pm660a-cdp.dtb \
+	sdm636-internal-codec-pm660a-mtp.dtb \
+	sdm636-internal-codec-pm660a-rcm.dtb \
+	sdm636-internal-codec-rcm.dtb \
+	sdm636-pm660a-headset-jacktype-no-cdp.dtb \
+	sdm636-pm660a-headset-jacktype-no-rcm.dtb \
+	sdm636-pm660a-cdp.dtb \
+	sdm636-pm660a-mtp.dtb \
+	sdm636-pm660a-qrd.dtb \
+	sdm636-pm660a-rcm.dtb \
+	sdm636-usbc-audio-mtp.dtb \
+	sdm636-usbc-audio-rcm.dtb \
+	sda636-cdp.dtb \
+	sda636-mtp.dtb \
+	sda636-rcm.dtb \
+	sda636-pm660a-cdp.dtb \
+	sda636-pm660a-mtp.dtb \
+	sda636-pm660a-qrd-hdk.dtb \
+	sda636-pm660a-rcm.dtb
 
 dtb-$(CONFIG_ARCH_SDM630) += sdm630-rumi.dtb \
 	sdm630-pm660a-rumi.dtb \
@@ -190,6 +254,7 @@ dtb-$(CONFIG_ARCH_SDM630) += sdm630-rumi.dtb \
 
 ifeq ($(CONFIG_ARM64),y)
 always          := $(dtb-y)
+always          += $(dtbo-y)
 subdir-y        := $(dts-dirs)
 else
 targets += dtbs
@@ -200,4 +265,4 @@ $(obj)/../%.dtb: $(src)/%.dts FORCE
 
 dtbs: $(addprefix $(obj)/../,$(dtb-y))
 endif
-clean-files := *.dtb
+clean-files := *.dtbo *.dtb

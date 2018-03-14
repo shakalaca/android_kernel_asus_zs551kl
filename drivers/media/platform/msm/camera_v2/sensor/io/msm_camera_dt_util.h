@@ -27,7 +27,6 @@
 #define DEFINE_MSM_MUTEX(mutexname) \
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
 //ASUS_BSP Deka---
-
 int msm_sensor_get_sub_module_index(struct device_node *of_node,
 	struct  msm_sensor_info_t **s_info);
 

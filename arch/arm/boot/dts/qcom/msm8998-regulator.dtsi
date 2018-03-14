@@ -75,7 +75,6 @@
 		pm8998_s4: regulator-s4 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
-			regulator-always-on;	/* ASUS BSP Always Enable 1.8V for BLSP8 (NFC, Buttery, Power) I2C */
 			status = "okay";
 		};
 	};
@@ -414,8 +413,9 @@
 	rpm-regulator-ldoa24 {
 		status = "okay";
 		pm8998_l24: regulator-l24 {
-			regulator-min-microvolt = <3088000>;
+			regulator-min-microvolt = <1848000>;
 			regulator-max-microvolt = <3088000>;
+			parent-supply = <&pm8998_l12>;
 			status = "okay";
 		};
 	};
@@ -480,7 +480,8 @@
 		status = "okay";
 		pm8998_l28: regulator-l28 {
 			regulator-min-microvolt = <3008000>;
-			regulator-max-microvolt = <3300000>;
+			regulator-max-microvolt = <3008000>;
+			regulator-always-on;	/* ASUS BSP Always Enable 1.8V for I2C & Sensors */
 			status = "okay";
 		};
 	};
@@ -495,7 +496,6 @@
 	rpm-regulator-vsa2 {
 		status = "okay";
 		pm8998_lvs2: regulator-lvs2 {
-			regulator-always-on;	/* ASUS BSP Always Enable 1.8V for SSC Sensors */
 			status = "okay";
 		};
 	};

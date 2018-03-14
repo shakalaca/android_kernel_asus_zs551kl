@@ -25,18 +25,15 @@
 static uint16_t rear_vcm_value = 0;
 static uint16_t rear_vcm_value_2 = 0;
 static uint16_t front_vcm_value = 0;
-
 static bool rear_vcm_active_mode = false;
 static bool rear_vcm2_active_mode = false;
 static bool front_vcm_active_mode = false;
-
 static struct msm_actuator_ctrl_t* rear_vcm_ctrl_t;
 static struct msm_actuator_ctrl_t* rear_vcm2_ctrl_t;
 static struct msm_actuator_ctrl_t* front_vcm_ctrl_t;
 #define REAR_VCM_CHECK_KVALUE_COUNT 10
 int cur_rear_vcm_check_count;
 /*For ASUS_BSP ZZ VCM---*/
-
 DEFINE_MSM_MUTEX(msm_actuator_mutex);
 
 #undef CDBG
@@ -416,6 +413,11 @@ static void msm_actuator_parse_i2c_params(struct msm_actuator_ctrl_t *a_ctrl,
 		return;
 	}
 
+	if (a_ctrl->i2c_reg_tbl == NULL) {
+		pr_err("failed. i2c reg tabl is NULL");
+		return;
+	}
+
 	size = a_ctrl->reg_tbl_size;
 	write_arr = a_ctrl->reg_tbl;
 	i2c_tbl = a_ctrl->i2c_reg_tbl;
@@ -767,9 +769,6 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 			settings[i].reg_data=reg_val;
 			break;
 //ASUS_BSP+++ CR_Randy vcm calibration Randy_Change@asus.com.tw [2017/9/6] Modify End
-
-
-
 		default:
 			pr_err("Unsupport i2c_operation: %d\n",
 				settings[i].i2c_operation);
@@ -985,7 +984,6 @@ static int32_t msm_actuator_move_focus(
 		kfree(ringing_params_kernel);
 		return -EFAULT;
 	}
-
 	curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
 	a_ctrl->i2c_tbl_index = 0;
 	CDBG("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
@@ -1106,7 +1104,6 @@ static int32_t msm_actuator_bivcm_move_focus(
 		kfree(ringing_params_kernel);
 		return -EFAULT;
 	}
-		
 	curr_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
 	a_ctrl->i2c_tbl_index = 0;
 	CDBG("curr_step_pos =%d dest_step_pos =%d curr_lens_pos=%d\n",
@@ -1691,9 +1688,11 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 
 	if (copy_from_user(&a_ctrl->region_params,
 		(void *)set_info->af_tuning_params.region_params,
-		a_ctrl->region_size * sizeof(struct region_params_t)))
+		a_ctrl->region_size * sizeof(struct region_params_t))) {
+		a_ctrl->total_steps = 0;
+		pr_err("Error copying region_params\n");
 		return -EFAULT;
-
+	}
 	if (a_ctrl->act_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		cci_client = a_ctrl->i2c_client.cci_client;
 		cci_client->sid =
@@ -1817,7 +1816,6 @@ static int msm_actuator_init(struct msm_actuator_ctrl_t *a_ctrl)
 			pr_err("cci_init failed\n");
 	}
 	a_ctrl->actuator_state = ACT_OPS_ACTIVE;
-
 	//ASUS_BSP ZZ++
 	if(a_ctrl->cam_name == ACTUATOR_MAIN_CAM_0 ){
 		rear_vcm_ctrl_t = a_ctrl;
@@ -1844,7 +1842,6 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 	mutex_lock(a_ctrl->actuator_mutex);
 	CDBG("Enter\n");
 	CDBG("%s type %d\n", __func__, cdata->cfgtype);
-
 
 	if (cdata->cfgtype != CFG_ACTUATOR_INIT &&
 		cdata->cfgtype != CFG_ACTUATOR_POWERUP &&
@@ -2148,6 +2145,10 @@ static long msm_actuator_subdev_do_ioctl(
 			parg = &actuator_data;
 			break;
 		}
+		break;
+	case VIDIOC_MSM_ACTUATOR_CFG:
+		pr_err("%s: invalid cmd 0x%x received\n", __func__, cmd);
+		return -EINVAL;
 	}
 
 	rc = msm_actuator_subdev_ioctl(sd, cmd, parg);

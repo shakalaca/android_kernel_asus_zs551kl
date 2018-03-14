@@ -406,9 +406,6 @@ sg_read(struct file *filp, char __user *buf, size_t count, loff_t * ppos)
 	struct sg_header *old_hdr = NULL;
 	int retval = 0;
 
-	if (unlikely(segment_eq(get_fs(), KERNEL_DS)))
-		return -EINVAL;
-
 	if ((!(sfp = (Sg_fd *) filp->private_data)) || (!(sdp = sfp->parentdp)))
 		return -ENXIO;
 	SCSI_LOG_TIMEOUT(3, sg_printk(KERN_INFO, sdp,
@@ -594,6 +591,9 @@ sg_write(struct file *filp, const char __user *buf, size_t count, loff_t * ppos)
 	struct sg_header old_hdr;
 	sg_io_hdr_t *hp;
 	unsigned char cmnd[SG_MAX_CDB_SIZE];
+
+	if (unlikely(segment_eq(get_fs(), KERNEL_DS)))
+		return -EINVAL;
 
 	if ((!(sfp = (Sg_fd *) filp->private_data)) || (!(sdp = sfp->parentdp)))
 		return -ENXIO;
@@ -1042,8 +1042,8 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 				if (srp) {
 					rinfo[val].req_state = srp->done + 1;
 					rinfo[val].problem =
-					    srp->header.masked_status &
-					    srp->header.host_status &
+					    srp->header.masked_status & 
+					    srp->header.host_status & 
 					    srp->header.driver_status;
 					if (srp->done)
 						rinfo[val].duration =
@@ -1064,7 +1064,7 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 				}
 			}
 			read_unlock_irqrestore(&sfp->rq_list_lock, iflags);
-			result = __copy_to_user(p, rinfo,
+			result = __copy_to_user(p, rinfo, 
 						SZ_SG_REQ_INFO * SG_MAX_QUEUE);
 			result = result ? -EFAULT : 0;
 			kfree(rinfo);
@@ -1768,6 +1768,10 @@ sg_start_req(Sg_request *srp, unsigned char *cmd)
 			return res;
 
 		iov_iter_truncate(&i, hp->dxfer_len);
+		if (!iov_iter_count(&i)) {
+			kfree(iov);
+			return -EINVAL;
+		}
 
 		res = blk_rq_map_user_iov(q, rq, md, &i, GFP_ATOMIC);
 		kfree(iov);
@@ -2628,7 +2632,7 @@ static void sg_proc_debug_helper(struct seq_file *s, Sg_device * sdp)
 			hp = &srp->header;
 			new_interface = (hp->interface_id == '\0') ? 0 : 1;
 			if (srp->res_used) {
-				if (new_interface &&
+				if (new_interface && 
 				    (SG_FLAG_MMAP_IO & hp->flags))
 					cp = "     mmap>> ";
 				else
@@ -2645,6 +2649,9 @@ static void sg_proc_debug_helper(struct seq_file *s, Sg_device * sdp)
 			seq_puts(s, srp->done ?
 				 ((1 == srp->done) ?  "rcv:" : "fin:")
 				  : "act:");
+			seq_printf(s, srp->done ?
+				   ((1 == srp->done) ?  "rcv:" : "fin:")
+				   : "act:");
 			seq_printf(s, " id=%d blen=%d",
 				   srp->header.pack_id, blen);
 			if (srp->done)

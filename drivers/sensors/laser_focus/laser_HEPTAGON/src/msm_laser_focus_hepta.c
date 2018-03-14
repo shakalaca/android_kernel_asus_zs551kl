@@ -1559,7 +1559,7 @@ static int Laser_regulator_init(struct msm_laser_focus_ctrl_t *dev_t)
 		return -1;
 	}	
 
-	ret = regulator_set_load(dev_t->reg, LASER_MEASURE_CURRENT);
+	ret = regulator_set_load(dev_t->reg, LASER_STANDBY_CURRENT);
 	if (ret < 0) {
 		dev_err(&dev_t->apps_i2c_client->dev, "Failed to set opt mode for vincentr reg %d\n", ret);
 		return ret;

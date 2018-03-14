@@ -1216,10 +1216,10 @@ static int ipa_fltrt_calc_extra_wrd_bytes(
 static int ipa_fltrt_generate_hw_rule_bdy_from_eq(
 		const struct ipa_ipfltri_rule_eq *attrib, u8 **buf)
 {
-	int num_offset_meq_32 = attrib->num_offset_meq_32;
-	int num_ihl_offset_range_16 = attrib->num_ihl_offset_range_16;
-	int num_ihl_offset_meq_32 = attrib->num_ihl_offset_meq_32;
-	int num_offset_meq_128 = attrib->num_offset_meq_128;
+	uint8_t num_offset_meq_32 = attrib->num_offset_meq_32;
+	uint8_t num_ihl_offset_range_16 = attrib->num_ihl_offset_range_16;
+	uint8_t num_ihl_offset_meq_32 = attrib->num_ihl_offset_meq_32;
+	uint8_t num_offset_meq_128 = attrib->num_offset_meq_128;
 	int i;
 	int extra_bytes;
 	u8 *extra;
@@ -2728,7 +2728,7 @@ static int ipa_fltrt_alloc_init_tbl_hdr(
 	params->nhash_hdr.base = dma_alloc_coherent(ipahal_ctx->ipa_pdev,
 		params->nhash_hdr.size,
 		&params->nhash_hdr.phys_base, GFP_KERNEL);
-	if (!params->nhash_hdr.size) {
+	if (!params->nhash_hdr.base) {
 		IPAHAL_ERR("fail to alloc DMA buff of size %d\n",
 			params->nhash_hdr.size);
 		goto nhash_alloc_fail;

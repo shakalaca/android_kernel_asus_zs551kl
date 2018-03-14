@@ -57,45 +57,6 @@ enum ldo_levels {
 /* port select mux: 1 - sw control. 0 - HW control*/
 #define SW_PORTSELECT_MX	BIT(1)
 
-#define QSERDES_TXA_TX_DRV_LVL			0x21c
-#define QSERDES_TXB_TX_DRV_LVL			0x61c
-#define QSERDES_TXA_TX_EMP_POST1_LVL		0x20c
-#define QSERDES_TXB_TX_EMP_POST1_LVL		0x60c
-#define QSERDES_TXA_LANE_MODE_1			0x28c
-#define QSERDES_TXB_LANE_MODE_1			0x68c
-#define QSERDES_RXA_RX_EQU_ADAPTOR_CNTRL4	0x4dc
-#define QSERDES_RXB_RX_EQU_ADAPTOR_CNTRL4	0x8dc
-
-unsigned int TXA_TX_DRV_LVL = 0;
-unsigned int TXB_TX_DRV_LVL = 0;
-unsigned int TXA_TX_EMP_POST1_LVL = 0;
-unsigned int TXB_TX_EMP_POST1_LVL = 0;
-unsigned int TXA_LANE_MODE_1 = 0;
-unsigned int TXB_LANE_MODE_1 = 0;
-unsigned int RXA_RX_EQU_ADAPTOR_CNTRL4 = 0;
-unsigned int RXB_RX_EQU_ADAPTOR_CNTRL4 = 0;
-
-module_param(TXA_TX_DRV_LVL, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXA_TX_DRV_LVL, "USB3PHY TXA_TX_DRV_LVL");
-module_param(TXB_TX_DRV_LVL, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXB_TX_DRV_LVL, "USB3PHY TXB_TX_DRV_LVL");
-
-module_param(TXA_TX_EMP_POST1_LVL, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXA_TX_EMP_POST1_LVL, "USB3PHY TXA_TX_EMP_POST1_LVL");
-module_param(TXB_TX_EMP_POST1_LVL, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXB_TX_EMP_POST1_LVL, "USB3PHY TXB_TX_EMP_POST1_LVL");
-
-module_param(TXA_LANE_MODE_1, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXA_LANE_MODE_1, "USB3PHY TXA_LANE_MODE_1");
-module_param(TXB_LANE_MODE_1, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(TXB_LANE_MODE_1, "USB3PHY TXB_LANE_MODE_1");
-
-module_param(RXA_RX_EQU_ADAPTOR_CNTRL4, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(RXA_RX_EQU_ADAPTOR_CNTRL4, "USB3PHY RXA_RX_EQU_ADAPTOR_CNTRL4");
-module_param(RXB_RX_EQU_ADAPTOR_CNTRL4, uint, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(RXB_RX_EQU_ADAPTOR_CNTRL4, "USB3PHY RXB_RX_EQU_ADAPTOR_CNTRL4");
-
-
 enum qmp_phy_rev_reg {
 	USB3_PHY_PCS_STATUS,
 	USB3_PHY_AUTONOMOUS_MODE_CTRL,
@@ -188,15 +149,17 @@ static void msm_ssusb_qmp_enable_autonomous(struct msm_ssphy_qmp *phy,
 
 	if (enable) {
 		msm_ssusb_qmp_clr_lfps_rxterm_int(phy);
+		val = readb_relaxed(phy->base + autonomous_mode_offset);
+		val |= ARCVR_DTCT_EN;
 		if (phy->phy.flags & DEVICE_IN_SS_MODE) {
-			val =
-			readb_relaxed(phy->base + autonomous_mode_offset);
-			val |= ARCVR_DTCT_EN;
 			val |= ALFPS_DTCT_EN;
 			val &= ~ARCVR_DTCT_EVENT_SEL;
-			writeb_relaxed(val, phy->base + autonomous_mode_offset);
+		} else {
+			val &= ~ALFPS_DTCT_EN;
+			val |= ARCVR_DTCT_EVENT_SEL;
 		}
 
+		writeb_relaxed(val, phy->base + autonomous_mode_offset);
 		/* clamp phy level shifter to perform autonomous detection */
 		writel_relaxed(0x1, phy->vls_clamp_reg);
 	} else {
@@ -261,11 +224,6 @@ static int msm_ssusb_qmp_ldo_enable(struct msm_ssphy_qmp *phy, int on)
 				"enable phy->fpc_redrive_ldo failed\n");
 			return rc;
 		}
-
-		dev_dbg(phy->phy.dev,
-			"fpc redrive ldo: min_vol:%duV max_vol:%duV\n",
-			phy->redrive_voltage_levels[VOLTAGE_LEVEL_MIN],
-			phy->redrive_voltage_levels[VOLTAGE_LEVEL_MAX]);
 	}
 
 	rc = msm_ldo_enable(phy, phy->vdd, phy->vdd_levels,
@@ -275,22 +233,12 @@ static int msm_ssusb_qmp_ldo_enable(struct msm_ssphy_qmp *phy, int on)
 		goto disable_fpc_redrive;
 	}
 
-	dev_dbg(phy->phy.dev,
-		"vdd ldo: min_vol:%duV max_vol:%duV\n",
-		phy->vdd_levels[VOLTAGE_LEVEL_MIN],
-		phy->vdd_levels[VOLTAGE_LEVEL_MAX]);
-
 	rc = msm_ldo_enable(phy, phy->core_ldo, phy->core_voltage_levels,
 			USB_SSPHY_HPM_LOAD);
 	if (rc < 0) {
 		dev_err(phy->phy.dev, "enable phy->core_ldo failed\n");
 		goto disable_vdd;
 	}
-
-	dev_dbg(phy->phy.dev,
-		"core ldo: min_vol:%duV max_vol:%duV\n",
-		phy->core_voltage_levels[VOLTAGE_LEVEL_MIN],
-		phy->core_voltage_levels[VOLTAGE_LEVEL_MAX]);
 
 	return 0;
 
@@ -384,23 +332,6 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		return ret;
 	}
 
-	if(TXA_TX_DRV_LVL)
-		writel_relaxed(TXA_TX_DRV_LVL, phy->base + QSERDES_TXA_TX_DRV_LVL);
-	if(TXB_TX_DRV_LVL)
-		writel_relaxed(TXB_TX_DRV_LVL, phy->base + QSERDES_TXB_TX_DRV_LVL);
-	if(TXA_TX_EMP_POST1_LVL)
-		writel_relaxed(TXA_TX_EMP_POST1_LVL, phy->base + QSERDES_TXA_TX_EMP_POST1_LVL);
-	if(TXB_TX_EMP_POST1_LVL)
-		writel_relaxed(TXB_TX_EMP_POST1_LVL, phy->base + QSERDES_TXB_TX_EMP_POST1_LVL);
-	if(TXA_LANE_MODE_1)
-		writel_relaxed(TXA_LANE_MODE_1, phy->base + QSERDES_TXA_LANE_MODE_1);
-	if(TXB_LANE_MODE_1)
-		writel_relaxed(TXB_LANE_MODE_1, phy->base + QSERDES_TXB_LANE_MODE_1);
-	if(RXA_RX_EQU_ADAPTOR_CNTRL4)
-		writel_relaxed(RXA_RX_EQU_ADAPTOR_CNTRL4, phy->base + QSERDES_RXA_RX_EQU_ADAPTOR_CNTRL4);
-	if(RXB_RX_EQU_ADAPTOR_CNTRL4)
-		writel_relaxed(RXB_RX_EQU_ADAPTOR_CNTRL4, phy->base + QSERDES_RXB_RX_EQU_ADAPTOR_CNTRL4);
-
 	/* perform lane selection */
 	val = -EINVAL;
 	if (phy->phy.flags & PHY_LANE_A)
@@ -435,16 +366,6 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 					phy->phy_reg[USB3_PHY_PCS_STATUS]));
 		return -EBUSY;
 	};
-
-	printk("TXA_TX_DRV_LVL:%0x2x,TXB_TX_DRV_LVL:%0x2x,TXA_TX_EMP_POST1_LVL:%0x2x,TXB_TX_EMP_POST1_LVL:%0x2x,TXA_LANE_MODE_1:%0x2x,TXB_LAN				E_MODE_1:%0x2x,RXA_RX_EQU_ADAPTOR_CNTRL4:%0x2x,RXB_RX_EQU_ADAPTOR_CNTRL4:%0x2x\n",
-			   readb_relaxed(phy->base + QSERDES_TXA_TX_DRV_LVL),
-			   readb_relaxed(phy->base + QSERDES_TXB_TX_DRV_LVL),
-			   readb_relaxed(phy->base + QSERDES_TXA_TX_EMP_POST1_LVL),
-			   readb_relaxed(phy->base + QSERDES_TXB_TX_EMP_POST1_LVL),
-			   readb_relaxed(phy->base + QSERDES_TXA_LANE_MODE_1),
-			   readb_relaxed(phy->base + QSERDES_TXB_LANE_MODE_1),
-			   readb_relaxed(phy->base + QSERDES_RXA_RX_EQU_ADAPTOR_CNTRL4),
-			   readb_relaxed(phy->base + QSERDES_RXB_RX_EQU_ADAPTOR_CNTRL4));
 
 	return 0;
 }

@@ -1305,6 +1305,13 @@ static int32_t msm_cci_i2c_set_sync_prms(struct v4l2_subdev *sd,
 	return rc;
 }
 
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+struct mutex CCI_RefMutex;
+int my_cci_ref;
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
+
+
 static int32_t msm_cci_init(struct v4l2_subdev *sd,
 	struct msm_camera_cci_ctrl *c_ctrl)
 {
@@ -1313,6 +1320,12 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 	struct cci_device *cci_dev;
 	enum cci_i2c_master_t master = MASTER_0;
 	uint32_t *clk_rates  = NULL;
+
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+		mutex_lock(&CCI_RefMutex);
+		my_cci_ref++;
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 
 	cci_dev = v4l2_get_subdevdata(sd);
 	if (!cci_dev || !c_ctrl) {
@@ -1328,6 +1341,7 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 		pr_err("%s: failed to vote for AHB\n", __func__);
 		return rc;
 	}
+
 
 	if (cci_dev->ref_count++) {
 		CDBG("%s ref_count %d\n", __func__, cci_dev->ref_count);
@@ -1369,6 +1383,10 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 				mutex_q[PRIORITY_QUEUE]);
 			//mutex_unlock(&cci_dev->cci_master_info[master].mutex); //ASUS_BSP PJ_Ma+++
 		}
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+		mutex_unlock(&CCI_RefMutex);
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 		return 0;
 	}
 	ret = msm_cci_pinctrl_init(cci_dev);
@@ -1507,6 +1525,12 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 	}
 	cci_dev->cci_state = CCI_STATE_ENABLED;
 
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+	mutex_unlock(&CCI_RefMutex);
+	if (my_cci_ref<0 || my_cci_ref>3) pr_err("%s ref_count = %d, my_ref=%d --- do request gpio done\n", "randy i2c init", cci_dev->ref_count, my_cci_ref);
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
+
 	return 0;
 
 reset_complete_failed:
@@ -1531,6 +1555,12 @@ request_gpio_failed:
 	if (cam_config_ahb_clk(NULL, 0, CAM_AHB_CLIENT_CCI,
 		CAM_AHB_SUSPEND_VOTE) < 0)
 		pr_err("%s: failed to remove vote for AHB\n", __func__);
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+		my_cci_ref--;
+		mutex_unlock(&CCI_RefMutex);
+		pr_err("%s ref_count = %d, my_ref=%d --- request gpio failed\n", "randy i2c init", cci_dev->ref_count, my_cci_ref);
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 	return rc;
 }
 
@@ -1538,6 +1568,12 @@ static int32_t msm_cci_release(struct v4l2_subdev *sd)
 {
 	uint8_t i = 0, rc = 0;
 	struct cci_device *cci_dev;
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy	
+	if (my_cci_ref<=0 || my_cci_ref>3)	pr_err("%s , my_ref=%d +++\n", "randy i2c release", my_cci_ref);
+		mutex_lock(&CCI_RefMutex);
+		my_cci_ref--;
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 
 	cci_dev = v4l2_get_subdevdata(sd);
 	if (!cci_dev->ref_count || cci_dev->cci_state != CCI_STATE_ENABLED) {
@@ -1586,9 +1622,16 @@ static int32_t msm_cci_release(struct v4l2_subdev *sd)
 	cci_dev->cci_clk_src = 0;
 
 ahb_vote_suspend:
+
 	if (cam_config_ahb_clk(NULL, 0, CAM_AHB_CLIENT_CCI,
 		CAM_AHB_SUSPEND_VOTE) < 0)
 		pr_err("%s: failed to remove vote for AHB\n", __func__);
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+	mutex_unlock(&CCI_RefMutex);
+if (my_cci_ref<0 || my_cci_ref>3)
+	pr_err("%s ref_count = %d, my_ref=%d ---\n", "randy i2c release fail", cci_dev->ref_count, my_cci_ref);
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 	return rc;
 }
 
@@ -2128,6 +2171,11 @@ static int msm_cci_probe(struct platform_device *pdev)
 	}
 
 	new_cci_dev->ref_count = 0;
+//ASUS_BSP+++ CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify Begin
+//randy
+	my_cci_ref=0;
+	mutex_init(&CCI_RefMutex);
+//ASUS_BSP--- CR_fix cci multiple request gpio fail Randy_Change@asus.com.tw [2018/3/15] Modify End
 	new_cci_dev->base = msm_camera_get_reg_base(pdev, "cci", true);
 	if (!new_cci_dev->base) {
 		pr_err("%s: no mem resource?\n", __func__);

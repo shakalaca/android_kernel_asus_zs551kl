@@ -1469,12 +1469,16 @@ static void set_hbm_mode(int mode)
 
     g_hbm_mode=mode;
 
-    if (mode==0) {
-        pr_err("[Display] hbm off\n");
-        mdss_dsi_panel_cmds_send(ctrl_pdata, &ctrl_pdata->hbm_off_cmds, CMD_REQ_COMMIT);
-    } else if (mode==1) {
-        pr_err("[Display] hbm on\n");
-        mdss_dsi_panel_cmds_send(ctrl_pdata, &ctrl_pdata->hbm_on_cmds, CMD_REQ_COMMIT);
+    if (g_mdss_pdata->panel_info.panel_power_state == MDSS_PANEL_POWER_ON) {
+        if (mode==0) {
+            pr_err("[Display] hbm off\n");
+            mdss_dsi_panel_cmds_send(ctrl_pdata, &ctrl_pdata->hbm_off_cmds, CMD_REQ_COMMIT);
+        } else if (mode==1) {
+            pr_err("[Display] hbm on\n");
+            mdss_dsi_panel_cmds_send(ctrl_pdata, &ctrl_pdata->hbm_on_cmds, CMD_REQ_COMMIT);
+        }
+    } else {
+        pr_err("[Display] panel is off, hbm mode(%d)\n", mode);
     }
 }
 

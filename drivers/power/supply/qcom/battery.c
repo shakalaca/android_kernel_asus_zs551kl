@@ -527,7 +527,7 @@ static int usb_icl_vote_callback(struct votable *votable, void *data,
 	 *	USBIN_I_VOTER based on settled current.
 	 */
 	if (icl_ua <= 1400000) {
-		printk("[BAT][CHG] usb_icl_vote_callback, icl_ua < 1400000\n");
+		printk("[BAT][CHG] usb_icl_vote_callback, icl_ua = %d < 1400000\n", icl_ua);
 		vote(chip->pl_enable_votable_indirect, USBIN_I_VOTER, false, 0);
 	} else {
 		schedule_delayed_work(&chip->status_change_work,

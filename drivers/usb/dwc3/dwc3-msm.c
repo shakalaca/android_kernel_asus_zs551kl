@@ -2330,11 +2330,9 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 	if (mdwc->id_state == DWC3_ID_FLOAT) {
 		dev_dbg(mdwc->dev, "XCVR: ID set\n");
 		set_bit(ID, &mdwc->inputs);
-		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 	} else {
 		dev_dbg(mdwc->dev, "XCVR: ID clear\n");
 		clear_bit(ID, &mdwc->inputs);
-		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 	}
 
 	if (mdwc->vbus_active && !mdwc->in_restart) {
@@ -3440,10 +3438,8 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 	int ret = 0;
 
-	if (!dwc->xhci) {
-		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
+	if (!dwc->xhci)
 		return -EINVAL;
-	}
 
 	/*
 	 * The vbus_reg pointer could have multiple values
@@ -3458,7 +3454,6 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 				PTR_ERR(mdwc->vbus_reg) == -EPROBE_DEFER) {
 			/* regulators may not be ready, so retry again later */
 			mdwc->vbus_reg = NULL;
-			mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 			return -EPROBE_DEFER;
 		}
 	}
@@ -3466,6 +3461,7 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	if (on) {
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
 
+		pm_runtime_get_sync(mdwc->dev);
 		mdwc->hs_phy->flags |= PHY_HOST_MODE;
 		if (dwc->maximum_speed == USB_SPEED_SUPER) {
 			mdwc->ss_phy->flags |= PHY_HOST_MODE;
@@ -3474,7 +3470,6 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		}
 
 		usb_phy_notify_connect(mdwc->hs_phy, USB_SPEED_HIGH);
-		pm_runtime_get_sync(mdwc->dev);
 		dbg_event(0xFF, "StrtHost gync",
 			atomic_read(&mdwc->dev->power.usage_count));
 		if (!IS_ERR(mdwc->vbus_reg))

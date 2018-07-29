@@ -75,6 +75,7 @@ static bool asus_flow_processing = 0;
 int asus_CHG_TYPE = 0;
 extern bool no_input_suspend_flag;
 volatile bool asus_adapter_detecting_flag = 0;
+volatile bool asus_chg_pd_active_flag = 0;
 extern bool g_Charger_mode;
 bool asus_flow_done_flag = 0;
 extern bool smartchg_stop_flag;
@@ -591,6 +592,8 @@ static int smblib_set_usb_pd_allowed_voltage(struct smb_charger *chg,
 {
 	int rc;
 	u8 allowed_voltage;
+
+	CHG_DBG("%s: min_uv = %d, max_uv = %d\n", __func__, min_allowed_uv, max_allowed_uv);
 
 	if (min_allowed_uv == MICRO_5V && max_allowed_uv == MICRO_5V) {
 		allowed_voltage = USBIN_ADAPTER_ALLOW_5V;
@@ -2841,6 +2844,7 @@ int smblib_set_prop_pd_current_max(struct smb_charger *chg,
 {
 	int rc;
 
+	CHG_DBG("%s: set pd current_max = %d\n", __func__, val->intval);
 	if (chg->pd_active)
 		rc = vote(chg->usb_icl_votable, PD_VOTER, true, val->intval);
 	else
@@ -3642,6 +3646,7 @@ void asus_typec_removal_function(struct smb_charger *chg)
 	UFP_FLAG = 0;
 	asus_flow_done_flag = 0;
 	asus_adapter_detecting_flag = 0;
+	asus_chg_pd_active_flag = 0;
 	asus_set_icl = ICL_475mA;
 	if (g_CDP_WA) {
 		g_CDP_WA--;
@@ -3764,8 +3769,10 @@ void smblib_asus_monitor_start(struct smb_charger *chg, int time)
 	if (g_Charger_mode)
 		write_CHGLimit_value(0);
 //ASUS BSP bat_span ---
-	cancel_delayed_work(&chg->asus_cable_check_work);
-	schedule_delayed_work(&smbchg_dev->asus_cable_check_work, msecs_to_jiffies(LEGACY_CHECK_DELAY_TIME));
+	if (!asus_chg_pd_active_flag) {
+		cancel_delayed_work(&chg->asus_cable_check_work);
+		schedule_delayed_work(&smbchg_dev->asus_cable_check_work, msecs_to_jiffies(LEGACY_CHECK_DELAY_TIME));
+	}
 	cancel_delayed_work(&chg->asus_min_monitor_work);
 	schedule_delayed_work(&chg->asus_min_monitor_work, msecs_to_jiffies(time));
 }
@@ -4084,8 +4091,9 @@ void asus_min_monitor_work(struct work_struct *work)
 
 	if (asus_get_prop_usb_present(smbchg_dev)) {
 		last_jeita_time = current_kernel_time();
+		if (!asus_chg_pd_active_flag)
+			schedule_delayed_work(&smbchg_dev->asus_cable_check_work, msecs_to_jiffies(ASUS_MONITOR_CYCLE));
 		schedule_delayed_work(&smbchg_dev->asus_min_monitor_work, msecs_to_jiffies(ASUS_MONITOR_CYCLE));
-		schedule_delayed_work(&smbchg_dev->asus_cable_check_work, msecs_to_jiffies(ASUS_MONITOR_CYCLE));
 		schedule_delayed_work(&smbchg_dev->asus_batt_RTC_work, 0);
 	}
 	asus_smblib_relax(smbchg_dev);
@@ -4137,6 +4145,7 @@ void asus_chg_flow_work(struct work_struct *work)
 
 	if (smbchg_dev->pd_active) {
 		CHG_DBG("%s: PD_active\n", __func__);
+		asus_chg_pd_active_flag = 1;
 		asus_adapter_detecting_flag = 0;
 		vote(smbchg_dev->pl_enable_votable_indirect, USBIN_I_VOTER, true, 0);
 		smblib_asus_monitor_start(smbchg_dev, 0);		//ASUS BSP Austin_T: Jeita start
@@ -4882,9 +4891,9 @@ void smblib_usb_plugin_hard_reset_locked(struct smb_charger *chg)
 		//	CHG_DBG_E("%s: failed to pull-high USB_LID_EN\n", __func__);
 		asus_flow_processing = 0;
 		asus_adapter_detecting_flag = 0;
-		vbus_rising_count = 0;
-		asus_typec_removal_function(smbchg_dev);
+		vbus_rising_count = 0;		
 		g_cos_over_full_flag = 0;
+		asus_typec_removal_function(smbchg_dev);
 	}
 //ASUS BSP Austin_T ---
 
@@ -4990,9 +4999,9 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 		//	CHG_DBG_E("%s: failed to pull-high USB_LID_EN\n", __func__);
 		asus_flow_processing = 0;
 		asus_adapter_detecting_flag = 0;
-		vbus_rising_count = 0;
-		asus_typec_removal_function(smbchg_dev);
+		vbus_rising_count = 0;		
 		g_cos_over_full_flag = 0;
+		asus_typec_removal_function(smbchg_dev);
 	}
 //ASUS BSP Austin_T ---
 

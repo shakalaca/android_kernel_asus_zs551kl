@@ -693,8 +693,8 @@ skip_sysfs_create:
 
 #ifdef CONFIG_QCOM_DLOAD_MODE
 	set_dload_mode(download_mode);
-	if (!download_mode)
-		scm_disable_sdi();
+	//if (!download_mode)
+	//	scm_disable_sdi();
 #endif
 	return 0;
 
